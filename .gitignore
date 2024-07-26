@@ -343,3 +343,4 @@ JAVADOC-GENERATED
 /lib/xmerl/src/xmerl_b64Bin.erl
 /lib/xmerl/src/xmerl_xpath_parse.erl
 /lib/xmerl/test/xmerl_test.erl
+.diffchanges
