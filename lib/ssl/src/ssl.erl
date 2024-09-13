@@ -645,7 +645,7 @@ Options common to both client and server side.
 
   Defaults to `tls`.
 
-- **`{handshake_completion, Completion}`** - Possibly pause handshake at hello stage.
+- **`{handshake, Completion}`** - Possibly pause handshake at hello stage.
 
   Defaults to `full`. If `hello` is specified the handshake will pause
   after the hello message, allowing the user to make decisions based
@@ -661,7 +661,7 @@ Options common to both client and server side.
 
   Added in OTP 23.2.
 
-- **`{handshake_size, HandshakeSize}`** - Limit the acceptable handshake packet size.
+- **`{max_handshake_size, HandshakeSize}`** - Limit the acceptable handshake packet size.
 
   Used to limit the size of valid TLS handshake packets to avoid DoS
   attacks.
@@ -1470,7 +1470,7 @@ different semantics for the client and server.
 -type client_option_cert() :: {verify, Verify ::verify_peer | verify_none} |
                               {cacerts,  CACerts::[public_key:der_encoded()] | [public_key:combined_cert()]} |
                               {cacertfile, CACertFile::file:filename()} |
-                              {server_name_indication, SNI::inet:hostname() | disabled} |
+                              {server_name_indication, SNI::inet:hostname() | disable} |
                               {customize_hostname_check, HostNameCheckOpts::list()} |
                               {certificate_authorities, boolean()} |
                               {stapling, Stapling:: staple | no_staple | map()}.
