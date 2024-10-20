@@ -21,6 +21,28 @@ limitations under the License.
 
 This document describes the changes made to the SSL application.
 
+## SSL 11.2.4
+
+### Fixed Bugs and Malfunctions
+
+- Refactor trying to also make some optimizations introduced a bug in signature algorithms checks in OTP-26.2.1. This could manifest itself in not being able to negotiate connections using certificates needing to use some TLS-1.2 compatibility legacy signature schemes.
+
+  Own Id: OTP-19249 Aux Id: ERIERL-1137, [PR-8866]
+
+- Correct timeout handling for termination code run for own alerts, so that intended timeout is used instead of falling back to OS TCP-stack timeout that is unreasonably long on some platforms.
+
+  Own Id: OTP-19274 Aux Id: [PR-8901]
+
+- Fix assertion so that works as intended.
+  This could result in that some TLS-1.2 clients would fail to connect to the the erlang server.  Bug introduced in OTP-27.1.1
+
+  Own Id: OTP-19288 Aux Id: [GH-8908], [PR-8916]
+
+[PR-8866]: https://github.com/erlang/otp/pull/8866
+[PR-8901]: https://github.com/erlang/otp/pull/8901
+[GH-8908]: https://github.com/erlang/otp/issues/8908
+[PR-8916]: https://github.com/erlang/otp/pull/8916
+
 ## SSL 11.2.3
 
 ### Fixed Bugs and Malfunctions
@@ -558,6 +580,20 @@ This document describes the changes made to the SSL application.
   possible values. Also make sha224 a non default value.
 
   Own Id: OTP-18572
+
+## SSL 10.9.1.6
+
+### Fixed Bugs and Malfunctions
+
+* Starting from TLS-1.3 some server handshake alerts might arrive after ssl:connection/2,3,4 has returned. If the socket is in active mode the controlling process will get the alert message, but passive sockets would only get \{error, closed\} on next call to ssl:recv/2,3 or ssl/setopts/2. Passive sockets calls will now return \{error, error_alert()\} instead.
+
+  Own Id: OTP-19236 Aux Id: PR-8261
+* Servers configured to support only version (pre TLS-1.2) should ignore hello version extension, as it is an unknown extension to them, this will result in that new clients that do not support the old server version will get an insufficient security alert from the server and not a protocol version alert, this is consistent with how old servers not able to support higher protocol versions work.
+
+  Own Id: OTP-19257 Aux Id: ERIERL-1131
+* Correct timeout handling for termination code run for own alerts, so that intended timeout is used instead of falling back to OS TCP-stack timeout that is unreasonably long on some platforms.
+
+  Own Id: OTP-19274 Aux Id: PR-8901
 
 ## SSL 10.9.1.5
 

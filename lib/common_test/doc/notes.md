@@ -19,6 +19,17 @@ limitations under the License.
 -->
 # Common Test Release Notes
 
+## Common_Test 1.27.3
+
+### Fixed Bugs and Malfunctions
+
+- With this change, jquery and tablesorter licenses are added to COPYRIGHT file.
+  Also tablesorter is updated to version 2.32.
+
+  Own Id: OTP-19265 Aux Id: [PR-8876]
+
+[PR-8876]: https://github.com/erlang/otp/pull/8876
+
 ## Common_Test 1.27.2
 
 ### Fixed Bugs and Malfunctions
@@ -225,6 +236,20 @@ limitations under the License.
   `dbg:stop/0`
 
   Own Id: OTP-18478 Aux Id: GH-6903
+
+## Common_Test 1.24.0.4
+
+### Fixed Bugs and Malfunctions
+
+* With this change, HTML reports include jQuery version 3.7.1.
+
+  Own Id: OTP-19252 Aux Id: PR-8858
+* With this change, jquery and tablesorter licenses are added to COPYRIGHT file. Also tablesorter is updated to version 2.32.
+
+  Own Id: OTP-19265 Aux Id: PR-8876
+* Fixed a bug where the sum of testcases' execution time in HTML logs was sometimes miscalculated, and the table was not fully printed.
+
+  Own Id: OTP-19284 Aux Id: ERIERL-1093, PR-8909
 
 ## Common_Test 1.24.0.3
 
