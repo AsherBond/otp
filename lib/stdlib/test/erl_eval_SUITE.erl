@@ -56,7 +56,8 @@
          otp_16865/1,
          eep49/1,
          binary_and_map_aliases/1,
-         eep58/1]).
+         eep58/1,
+         binary_skip/1]).
 
 %%
 %% Define to run outside of test server
@@ -68,6 +69,7 @@
 -export([count_down/2, count_down_fun/0, do_apply/2, 
          local_func/3, local_func_value/2]).
 -export([simple/0]).
+-export([my_div/2]).
 
 -ifdef(STANDALONE).
 -define(config(A,B),config(A,B)).
@@ -97,7 +99,7 @@ all() ->
      otp_8133, otp_10622, otp_13228, otp_14826,
      funs, custom_stacktrace, try_catch, eval_expr_5, zero_width,
      eep37, eep43, otp_15035, otp_16439, otp_14708, otp_16545, otp_16865,
-     eep49, binary_and_map_aliases, eep58].
+     eep49, binary_and_map_aliases, eep58, binary_skip].
 
 groups() -> 
     [].
@@ -1217,8 +1219,6 @@ custom_stacktrace(Config) when is_list(Config) ->
     backtrace_check("#unknown.index.", {undef_record,unknown},
                     [erl_eval, mystack(1)], none, EFH),
 
-    backtrace_check("fun foo/2.", undef,
-                    [{erl_eval, foo, 2}, erl_eval, mystack(1)], none, EFH),
     backtrace_check("foo(1, 2).", undef,
                     [{erl_eval, foo, 2}, erl_eval, mystack(1)], none, EFH),
 
@@ -1369,7 +1369,6 @@ funs(Config) when is_list(Config) ->
     error_check("begin F = fun(T) -> timer:sleep(T) end,F(1) end.",
                       got_it, none, AnnEFH),
 
-    error_check("fun c/1.", undef),
     error_check("fun a:b/0().", undef),
 
     MaxArgs = 20,
@@ -1387,7 +1386,35 @@ funs(Config) when is_list(Config) ->
     %% Test that {M,F} is not accepted as a fun.
     error_check("{" ?MODULE_STRING ",module_info}().",
 		{badfun,{?MODULE,module_info}}),
+
+    %% Test defining and calling a fun based on an auto-imported BIF.
+    check(fun() ->
+                  F = fun is_binary/1,
+                  true = F(<<>>),
+                  false = F(a)
+          end,
+          ~S"""
+           F = fun is_binary/1,
+           true = F(<<>>),
+           false = F(a).
+           """,
+          false, ['F'], lfh(), none),
+
+    %% Test defining and calling a local fun defined in the shell.
+    check(fun() ->
+                  D = fun my_div/2,
+                  3 = D(15, 5)
+          end,
+          ~S"""
+           D = fun my_div/2,
+           3 = D(15, 5).
+           """,
+          3, ['D'], lfh(), efh()),
+
     ok.
+
+my_div(A, B) ->
+    A div B.
 
 run_many_args({S, As}) ->
     apply(eval_string(S), As) =:= As.
@@ -2028,6 +2055,18 @@ eep58(Config) when is_list(Config) ->
     error_check("[K+V || K := V <- a].", {bad_generator,a}),
     error_check("[K+V || K := V <- [-1|#{}]].", {bad_generator,[-1|#{}]}),
 
+    ok.
+
+binary_skip(Config) when is_list(Config) ->
+    check(fun() -> X = 32, [X || <<X:64/float>> <= <<-1:64, 0:64, 0:64, 0:64>>] end,
+	  "begin X = 32, [X || <<X:64/float>> <= <<-1:64, 0:64, 0:64, 0:64>>] end.",
+	  [+0.0,+0.0,+0.0]),
+    check(fun() -> X = 32, [X || <<X:64/float>> <= <<0:64, -1:64, 0:64, 0:64>>] end,
+	  "begin X = 32, [X || <<X:64/float>> <= <<0:64, -1:64, 0:64, 0:64>>] end.",
+	  [+0.0,+0.0,+0.0]),
+    check(fun() -> [a || <<0:64/float>> <= <<0:64, 1:64, 0:64, 0:64>> ] end,
+	  "begin [a || <<0:64/float>> <= <<0:64, 1:64, 0:64, 0:64>> ] end.",
+	  [a,a,a]),
     ok.
 
 %% Check the string in different contexts: as is; in fun; from compiled code.
