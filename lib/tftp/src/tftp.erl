@@ -1,7 +1,7 @@
 %%
 %% %CopyrightBegin%
 %% 
-%% Copyright Ericsson AB 2005-2024. All Rights Reserved.
+%% Copyright Ericsson AB 2005-2025. All Rights Reserved.
 %% 
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -345,7 +345,7 @@ matching regexp is found.
 -spec read_file(RemoteFilename, LocalFilename, Options) ->
         {ok, LastCallbackState} | {error, Reason} when
     RemoteFilename    :: file:filename(),
-    LocalFilename     :: file:filename_all(),
+    LocalFilename     :: file:filename_all() | 'binary',
     Options           :: [connection_option()],
     LastCallbackState :: term(),
     Reason            :: term().

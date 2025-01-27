@@ -1,7 +1,7 @@
 %%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 1996-2024. All Rights Reserved.
+%% Copyright Ericsson AB 1996-2025. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -256,7 +256,7 @@ is_running(AppName) when is_atom(AppName) ->
 %%-----------------------------------------------------------------
 %% Func: start_boot_application/2
 %% The same as start_application/2 expect that this function is
-%% called from the boot script file. It mustnot be used by the operator.
+%% called from the boot script file. It must not be used by the operator.
 %% This function will cause a node crash if a permanent application 
 %% fails to boot start
 %%-----------------------------------------------------------------
