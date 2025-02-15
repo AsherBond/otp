@@ -429,6 +429,14 @@ This document describes the changes made to the Kernel application.
 [#6724]: https://github.com/erlang/otp/issues/6724
 [PR-8396]: https://github.com/erlang/otp/pull/8396
 
+## Kernel 9.2.4.6
+
+### Fixed Bugs and Malfunctions
+
+* Fixed a couple of bugs that could make `global`'s internal state inconsistent when a connection was reconnected.
+
+  Own Id: OTP-19381 Aux Id: PR-9377, GH-9112, GH-9117
+
 ## Kernel 9.2.4.5
 
 ### Fixed Bugs and Malfunctions
@@ -1188,6 +1196,14 @@ This document describes the changes made to the Kernel application.
   multi-line statements. Redraw the prompt after continuing from JCL menu.
 
   Own Id: OTP-18575 Aux Id: PR-7169
+
+## Kernel 8.5.4.4
+
+### Fixed Bugs and Malfunctions
+
+* Fixed a couple of bugs that could make `global`'s internal state inconsistent when a connection was reconnected.
+
+  Own Id: OTP-19381 Aux Id: PR-9377, GH-9112, GH-9117
 
 ## Kernel 8.5.4.3
 
