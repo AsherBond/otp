@@ -1,7 +1,7 @@
 /*
  * %CopyrightBegin%
  *
- * Copyright Ericsson AB 1996-2024. All Rights Reserved.
+ * Copyright Ericsson AB 1996-2025. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -436,6 +436,8 @@ struct erts_system_monitor_flags_t erts_system_monitor_flags;
 Eterm erts_system_profile;
 struct erts_system_profile_flags_t erts_system_profile_flags;
 int erts_system_profile_ts_type = ERTS_TRACE_FLG_NOW_TIMESTAMP;
+
+erts_atomic_t erts_sched_local_random_nosched_state;
 
 #if ERTS_MAX_PROCESSES > 0x7fffffff
 #error "Need to store process_count in another type"
@@ -6329,7 +6331,8 @@ erts_init_scheduling(int no_schedulers, int no_schedulers_online, int no_poll_th
     erts_atomic32_init_relb(&erts_halt_progress, -1);
     erts_halt_code = INT_MIN;
 
-
+    erts_atomic_init_nob(&erts_sched_local_random_nosched_state,
+                         (erts_aint_t)&erts_sched_local_random_nosched_state >> 3);
 }
 
 ErtsRunQueue *
@@ -9499,9 +9502,6 @@ Process *erts_schedule(ErtsSchedulerData *esdp, Process *p, int calls)
     erts_aint32_t state = 0; /* Suppress warning... */
     int is_normal_sched;
     ErtsSchedType sched_type;
-#ifdef DEBUG
-    int aborted_execution = 0;
-#endif
 
     ERTS_MSACC_DECLARE_CACHE();
 
@@ -9659,11 +9659,7 @@ Process *erts_schedule(ErtsSchedulerData *esdp, Process *p, int calls)
             ERTS_MSACC_SET_STATE_CACHED(ERTS_MSACC_STATE_OTHER);
 
             if (state & ERTS_PSFLG_FREE) {
-                if (!is_normal_sched) {
-                    ASSERT((p->flags & F_DELAYED_DEL_PROC)
-                           || aborted_execution);
-                }
-                else {
+                if (is_normal_sched) {
                     ASSERT(esdp->free_process == p);
                     esdp->free_process = NULL;
                 }
@@ -9687,10 +9683,6 @@ Process *erts_schedule(ErtsSchedulerData *esdp, Process *p, int calls)
  check_activities_to_run: {
 	ErtsMigrationPaths *mps;
 	ErtsMigrationPath *mp;
-
-#ifdef DEBUG
-        aborted_execution = 0;
-#endif
 
 	if (is_normal_sched) {
 
@@ -10127,9 +10119,6 @@ Process *erts_schedule(ErtsSchedulerData *esdp, Process *p, int calls)
 		erts_proc_unlock(p, ERTS_PROC_LOCK_STATUS);
                 if (ERTS_IS_P_TRACED(p))
                     trace_schedule_in(p, state);
-#ifdef DEBUG
-                aborted_execution = !0;
-#endif
 		goto sched_out_proc;
 	    }
             break;
