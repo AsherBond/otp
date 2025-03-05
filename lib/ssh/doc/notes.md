@@ -1,7 +1,7 @@
 <!--
 %CopyrightBegin%
 
-Copyright Ericsson AB 2023-2024. All Rights Reserved.
+Copyright Ericsson AB 2023-2025. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,6 +18,22 @@ limitations under the License.
 %CopyrightEnd%
 -->
 # SSH Release Notes
+
+## Ssh 5.2.8
+
+### Fixed Bugs and Malfunctions
+
+- Minor documentation improvements.
+
+  Own Id: OTP-19410 Aux Id: [PR-9188]
+
+- Function specification for `ssh_sftp:start_channel/2` is fixed.
+
+  Own Id: OTP-19475 Aux Id: [PR-9368], [GH-9359]
+
+[PR-9188]: https://github.com/erlang/otp/pull/9188
+[PR-9368]: https://github.com/erlang/otp/pull/9368
+[GH-9359]: https://github.com/erlang/otp/issues/9359
 
 ## Ssh 5.2.7
 

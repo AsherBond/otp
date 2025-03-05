@@ -1,7 +1,7 @@
 <!--
 %CopyrightBegin%
 
-Copyright Ericsson AB 2023-2024. All Rights Reserved.
+Copyright Ericsson AB 2023-2025. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,6 +20,26 @@ limitations under the License.
 # SSL Release Notes
 
 This document describes the changes made to the SSL application.
+
+## SSL 11.2.9
+
+### Fixed Bugs and Malfunctions
+
+- The function for selecting the best server  certificate and key pair has been enhanced when several options are available to ensure that the fallback will not always be chosen.
+
+  Own Id: OTP-19423 Aux Id: [PR-9185]
+
+- Avoided duplicating a few algorithms in default values caused by an interoperability workaround not needed in this case.
+
+  Own Id: OTP-19428 Aux Id: [PR-9288]
+
+- Fixed two alert bugs, which could result in a crash instead of an alert.
+
+  Own Id: OTP-19433 Aux Id: [PR-9308]
+
+[PR-9185]: https://github.com/erlang/otp/pull/9185
+[PR-9288]: https://github.com/erlang/otp/pull/9288
+[PR-9308]: https://github.com/erlang/otp/pull/9308
 
 ## SSL 11.2.8
 
