@@ -49,7 +49,7 @@
 
 -module(gen_tcp_misc_SUITE).
 
--include_lib("common_test/include/ct.hrl").
+-include_lib("stdlib/include/assert.hrl").
 -include("kernel_test_lib.hrl").
 
 -export([
@@ -108,7 +108,8 @@
 	 otp_18357/1,
          otp_18883/1,
 	 otp_18707/1,
-         send_block_unblock/1
+         send_block_unblock/1,
+         prim_inet_recv_marker/1
 	]).
 
 %% Internal exports.
@@ -186,7 +187,7 @@ groups() ->
      {inet_backend_socket,    [], inet_backend_socket_cases()},
 
      {tickets,                [], ticket_cases()},
-
+     
      {ctrl_proc,              [], ctrl_proc_cases()},
      {close,                  [], close_cases()},
      {active,                 [], active_cases()},
@@ -205,7 +206,7 @@ inet_backend_default_cases() ->
     all_std_cases().
 
 inet_backend_inet_cases() ->
-    all_std_cases().
+    [prim_inet_recv_marker] ++ all_std_cases().
 
 inet_backend_socket_cases() ->
     all_std_cases().
@@ -2044,7 +2045,11 @@ do_show_econnreset_active(Config, Addr) ->
     {ok, S1} = gen_tcp:accept(L1),
     ok = gen_tcp:close(L1),
     ok = inet:setopts(Client1, [{linger, {true, 0}}]),
+    %% ?P("enable server socket debug"),
+    %% _ = inet:setopts(S1, [{debug, true}]),
+    ?P("close the client socket"),
     ok = gen_tcp:close(Client1),
+    ?P("await server side econnreset (tcp-) error message"),
     receive
 	{tcp_error, S1, econnreset} ->
 	    receive
@@ -2059,9 +2064,14 @@ do_show_econnreset_active(Config, Addr) ->
                     ?P("UNEXPECTED timeout (expected closed)"),
                     ct:fail({timeout, {server, no_tcp_closed}})
 	    end;
+
+	{tcp_closed, S1} ->
+            ?P("Received unexpected 'closed' message"),
+	    ct:fail({unexpected, on, econnreset, closed});
+	    
 	Other2 ->
-            ?P("UNEXPECTED (expected error:econnreset):"
-               "~n   ~p", [Other2]),
+	    ?P("Received unexpected message:"
+	       "~n   ~p", [Other2]),
 	    ct:fail({unexpected, on, econnreset, Other2})
     after 1000 ->
             ?P("UNEXPECTED timeout (expected error:econnreset)"),
@@ -9633,6 +9643,24 @@ do_otp_18707(_Config) ->
     ?P("done"),
     ok.
 
+%% Disassemble prim_inet.beam and make that sure each function has
+%% the correct number of recv markers.
+prim_inet_recv_marker(_Config) ->
+    [PrimInet | _] = filelib:wildcard(
+        filename:join([code:lib_dir(erts),"**","prim_inet.beam"])),
+
+    {beam_file, prim_inet, _Exports, _Vsn, _Attr, Functions} =
+        beam_disasm:file(PrimInet),
+    RecvMarkerCnt =
+        [{Name,Arity,length([C || {recv_marker_use,_} = C <- Code])}
+            || {function, Name, Arity, _, Code} <- Functions],
+    RecvMarkers =
+        [{Name, Arity} || {Name,Arity,Cnt} <- RecvMarkerCnt, Cnt =/= 0],
+
+    ?assert(lists:member({send,4}, RecvMarkers)),
+    ?assert(lists:member({do_sendto,4}, RecvMarkers)),
+
+    ok.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
