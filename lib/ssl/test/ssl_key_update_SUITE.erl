@@ -1,7 +1,7 @@
 %%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 2020-2023. All Rights Reserved.
+%% Copyright Ericsson AB 2020-2025. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -153,18 +153,16 @@ keylog_client_cb(Config) ->
         {keylog, #{items := HSKeylog}} ->
             ["CLIENT_HANDSHAKE_TRAFFIC_SECRET" ++ _| _] = HSKeylog
     end,
+    Role = receive
+               {keylog, #{items := TConKeylog0}} ->
+                   traffic_secret_0(TConKeylog0)
+           end,
+    OppositeRole = opposite_role(Role),
     receive
-        {keylog, #{items := RConKeylog}} ->
-            ["SERVER_TRAFFIC_SECRET_0" ++ _| _] = RConKeylog
+        {keylog, #{items := TConKeylog2}} ->
+            OppositeRole = traffic_secret_0(TConKeylog2)
     end,
-    receive
-     {keylog, #{items := SConKeylog}} ->
-            ["CLIENT_TRAFFIC_SECRET_0" ++ _| _] = SConKeylog
-    end,
-    receive
-        {keylog, #{items := UpdateKeylog}} ->
-            ["CLIENT_TRAFFIC_SECRET_1" ++ _| _] = UpdateKeylog
-    end.
+    ok = traffic_secret_1_and_2([{client,1}, {client, 2}, {server,1}, {server, 2}]).
 
 keylog_server_cb() ->
     [{doc,"Test option {keep_secrets, {keylog, fun()}}"}].
@@ -191,22 +189,33 @@ keylog_server_cb(Config) ->
     end,
     Role = receive
                {keylog, #{items := TConKeylog0}} ->
-                   traffic_secret(TConKeylog0)
+                   traffic_secret_0(TConKeylog0)
            end,
-    OppsitRole = opposite_role(Role),
+    OppositeRole = opposite_role(Role),
     receive
         {keylog, #{items := TConKeylog2}} ->
-            OppsitRole = traffic_secret(TConKeylog2)
+            OppositeRole = traffic_secret_0(TConKeylog2)
     end,
-    receive
-        {keylog, #{items := UpdateKeylog}} ->
-            ["SERVER_TRAFFIC_SECRET_1" ++ _| _] = UpdateKeylog
-    end.
+    ok = traffic_secret_1_and_2([{client,1}, {client, 2}, {server,1}, {server, 2}]).
 
 %%--------------------------------------------------------------------
 %% Internal functions  -----------------------------------------------
 %%--------------------------------------------------------------------
-traffic_secret(KeyLog) ->
+traffic_secret_1_and_2([]) ->
+    ok;
+traffic_secret_1_and_2([_|_] = List) ->
+    receive
+        {keylog, #{items := ["SERVER_TRAFFIC_SECRET_1" ++ _| _]}} ->
+            traffic_secret_1_and_2(lists:delete({server, 1}, List));
+        {keylog, #{items := ["CLIENT_TRAFFIC_SECRET_1" ++ _| _]}} ->
+            traffic_secret_1_and_2(lists:delete({client, 1}, List));
+        {keylog, #{items := ["SERVER_TRAFFIC_SECRET_2" ++ _| _]}} ->
+            traffic_secret_1_and_2(lists:delete({server, 2}, List));
+        {keylog, #{items := ["CLIENT_TRAFFIC_SECRET_2" ++ _| _]}} ->
+            traffic_secret_1_and_2(lists:delete({client, 2}, List))
+    end.
+
+traffic_secret_0(KeyLog) ->
     case KeyLog of
         ["CLIENT_TRAFFIC_SECRET_0" ++ _| _] ->
             client;
@@ -258,7 +267,7 @@ key_update_at(Config, Role) ->
     Keys2 = get_traffic_secrets(ClientSocket, ServerSocket),
     verify_key_update(Keys1, Keys2),
     %% Verify prevention 
-    {["CLIENT_TRAFFIC_SECRET_10"| _], ["CLIENT_TRAFFIC_SECRET_10"| _]} = Keys2,
+    {["CLIENT_TRAFFIC_SECRET_10" ++ _| _], ["CLIENT_TRAFFIC_SECRET_10" ++ _| _]} = Keys2,
     ssl_test_lib:close(Server),
     ssl_test_lib:close(Client).
 

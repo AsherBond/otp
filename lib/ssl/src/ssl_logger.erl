@@ -1,7 +1,7 @@
 %%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 1999-2024. All Rights Reserved.
+%% Copyright Ericsson AB 1999-2025. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -175,13 +175,11 @@ keylog_traffic_1_3(Role, ClientRandom, Prf, TrafficSecretBin, N) ->
     ClientRand = io_lib:format("~64.16.0B", [ClientRandBin]),
     case Role of
         client ->
-            ["CLIENT_TRAFFIC_SECRET_" ++ integer_to_list(N),
-             ClientRand,
-             TrafficSecret];
+            ["CLIENT_TRAFFIC_SECRET_" ++ integer_to_list(N) ++ " "
+             ++ ClientRand ++ " " ++ TrafficSecret];
         server ->
-            ["SERVER_TRAFFIC_SECRET_" ++ integer_to_list(N),
-             ClientRand,
-             TrafficSecret]
+            ["SERVER_TRAFFIC_SECRET_" ++ integer_to_list(N) ++ " "
+             ++ ClientRand ++ " " ++ TrafficSecret]
     end.
 
 keylog_traffic_pre_1_3(ClientRandom, MasterSecret) ->
