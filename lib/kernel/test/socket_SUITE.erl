@@ -1,5 +1,7 @@
 %%
 %% %CopyrightBegin%
+%%
+%% SPDX-License-Identifier: Apache-2.0
 %% 
 %% Copyright Ericsson AB 2018-2025. All Rights Reserved.
 %% 
@@ -576,14 +578,7 @@ format_ioctl(Key, Sup, Prefix, Max) ->
 init_per_testcase(_TC, Config) ->
     io:format("init_per_testcase(~w) -> entry with"
               "~n   Config: ~p"
-              "~n   links:  ~p"
-              "~n", [_TC, Config, links()]),
-    %% case quiet_mode(Config) of
-    %%     default ->
-    %%         ?LOGGER:start();
-    %%     Quiet ->
-    %%         ?LOGGER:start(Quiet)
-    %% end,
+              "~n", [_TC, Config]),
     Config.
 
 end_per_testcase(_TC, Config) ->
@@ -4030,13 +4025,7 @@ monitor_open_and_close_multi_socks_and_mon(Config) when is_list(Config) ->
     ?TT(?SECS(30)),
     tc_try(?FUNCTION_NAME,
            fun() ->
-                   FactorKey = kernel_factor,
-                   case lists:keysearch(FactorKey, 1, Config) of
-                       {value, {FactorKey, Factor}} when (Factor > 15) ->
-                           skip("Very slow machine");
-                       _ ->
-                           ok
-                   end
+                   factor_limit(Config)
            end,
            fun() ->
 		   InitState = #{domain   => inet,
@@ -11194,6 +11183,7 @@ do_ioctl_tcp_info(#{domain := Domain,
 
 
 
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%                                                                     %%
@@ -12097,7 +12087,7 @@ do_otp18635(_) ->
 
     %% ok = socket:setopt(LSock, otp, debug, true),
 
-    %% show handle returned from nowait accept
+                                                % show handle returned from nowait accept
     ?P("try accept with timeout = nowait - expect select when"
        "~n   (gen socket) info: ~p"
        "~n   Sockets:           ~p",
@@ -12364,9 +12354,6 @@ do_otp19063(_) ->
         {'DOWN', MRef, process, Connector, _} ->
             ?P("connector terminated"),
             ok
-    after 1000 ->
-	    ?P("connector did not die in time - kill it"),
-	    exit(Connector, kill)
     end,
     _ = socket:close(ASock1),
     _ = socket:close(LSock1),
@@ -12652,10 +12639,8 @@ do_otp19469_stream(#{family := Fam} = LSA) ->
     _ = socket:setopt(S3, otp, debug, true),
     case os:type() of
         {unix, _} ->
-            %% This is a OTP 27 behaviour.
-            %% Not in 26 and not in 28 (I think)
-            {error, timeout} = socket:recv(S3, 2*DataSz, ?SECS(5)),
-            {ok, Data}       = socket:recv(S3, 0);
+            %% As of 28 we are back to this behaviour
+            {error, {timeout, Data}} = socket:recv(S3, 2*DataSz, ?SECS(5));
         {win32, _} ->
             {error, {timeout, Data}} = socket:recv(S3, 2*DataSz, ?SECS(5))
     end,
@@ -12744,10 +12729,10 @@ do_otp19469_dgram(#{family := Fam} = LSA) ->
 -define(OTP19482_CHUNK_MEDIUM, ?OTP19482_CHUNK_8K).
 
 otp19482_simple_single_small(Config) when is_list(Config) ->
-    ?TT(?SECS(10)),
-    
+    ?TT(?SECS(10 * which_factor(Config))),
     Cond = fun() ->
-                   has_support_ipv4()
+                   has_support_ipv4(),
+                   factor_limit(Config)
            end,
     Pre  = fun() ->
                    #{iov_max := IOVMax} = Info = socket:info(),
@@ -12771,9 +12756,10 @@ otp19482_simple_single_small(Config) when is_list(Config) ->
 
 
 otp19482_simple_single_medium(Config) when is_list(Config) ->
-    ?TT(?SECS(10)),
+    ?TT(?SECS(10 * which_factor(Config))),
     Cond = fun() ->
-                   has_support_ipv4()
+                   has_support_ipv4(),
+                   factor_limit(Config)
            end,
     Pre  = fun() ->
                    #{iov_max := IOVMax} = Info = socket:info(),
@@ -12797,9 +12783,10 @@ otp19482_simple_single_medium(Config) when is_list(Config) ->
 
 
 otp19482_simple_single_mixed(Config) when is_list(Config) ->
-    ?TT(?SECS(10)),
+    ?TT(?SECS(10 * which_factor(Config))),
     Cond = fun() ->
-                   has_support_ipv4()
+                   has_support_ipv4(),
+                   factor_limit(Config)
            end,
     Pre  = fun() ->
                    #{iov_max := IOVMax} = Info = socket:info(),
@@ -12829,9 +12816,11 @@ otp19482_simple_single_mixed(Config) when is_list(Config) ->
 
 
 otp19482_simple_single_mixed_long(Config) when is_list(Config) ->
-    ?TT(?SECS(10)),
+    Factor = which_factor(Config),
+    ?TT(?SECS(10 * Factor)),
     Cond = fun() ->
-                   has_support_ipv4()
+                   has_support_ipv4(),
+                   factor_limit(Config)
            end,
     Pre  = fun() ->
                    #{iov_max := IOVMax} = Info = socket:info(),
@@ -12853,7 +12842,8 @@ otp19482_simple_single_mixed_long(Config) when is_list(Config) ->
 				    [<<CLen:32>>, <<CChk:32>>, C]
 				end || C <- Chunks0]),
 		   Chunks2 = lists:flatten(lists:duplicate(100, Chunks1)),
-                   #{iov_max => IOVMax,
+                   #{factor  => Factor,
+                     iov_max => IOVMax,
                      lsa     => LSA,
                      chunk   => Chunks2,
 		     verify  => fun(Data) -> otp19482_verify_data(Data) end}
@@ -12876,12 +12866,6 @@ otp19482_verify_data(N, <<Sz:32, CHKSUM:32, Chunk:Sz/binary, Rest/binary>>) ->
 	CHKSUM ->
 	    otp19482_verify_data(N+1, Rest);
 	BadCHKSUM ->
-	    %% ?P("~w -> bad checksum for chunk ~w: "
-	    %%    "~n   Sz:                ~w"
-	    %%    "~n   Expected CheckSum: ~w"
-	    %%    "~n   CheckSum:          ~w"
-	    %%    "~n   size of Rest:      ~w",
-	    %%    [?FUNCTION_NAME, N, Sz, CHKSUM, BadCHKSUM, byte_size(Rest)]),
 	    ct:fail({bad_checksum, CHKSUM, BadCHKSUM})
     end;
 otp19482_verify_data(N, BadData) ->
@@ -13074,8 +13058,9 @@ otp19482_simple_single_client_exchange(_Sock, _Verify, _IOV, 0) ->
     ?P("[client] done"),
     ok;
 otp19482_simple_single_client_exchange(Sock, Verify, IOV, N) ->
-    Sz = iolist_size(IOV),
-    ?P("[client] try sendv ~w (~w bytes)", [N, Sz]),
+    Sz  = iolist_size(IOV),
+    Len = length(IOV),
+    ?P("[client] try sendv IOV ~w (~w bytes, length ~w)", [N, Sz, Len]),
     %% ok = socket:setopt(Sock, otp, debug, true),
     case socket:sendv(Sock, IOV) of
 	ok ->
@@ -13109,10 +13094,26 @@ otp19482_simple_single_client_exchange(Sock, Verify, IOV, N) ->
 	    end;
 
         %% We are overloaded this machine...
+	{error, {econnreset = Reason, RestIOV}} ->
+	    ?P("[client] sendv ~w failed with rest-iov: "
+	       "~n   Reason:          ~p"
+	       "~n   length(RestIOV): ~w"
+	       "~n   size(RestIOV):   ~w",
+               [N, Reason, length(RestIOV), iolist_size(RestIOV)]),
+	    ?SKIPE({Reason, N, Sz, iolist_size(RestIOV), length(RestIOV)});
 	{error, econnreset = Reason} ->
 	    ?P("[client] sendv ~w failed: "
 	       "~n   Reason: ~p", [N, Reason]),
-	    ?SKIPE({Reason, N});
+	    ?SKIPE({Reason, N, Sz});
+
+	{error, {Reason, RestIOV}} when is_list(RestIOV)->
+	    ?P("[client] sendv ~w failed with rest-iov: "
+	       "~n   Reason:          ~p"
+	       "~n   length(RestIOV): ~w"
+	       "~n   size(RestIOV):   ~w",
+               [N, Reason, length(RestIOV), iolist_size(RestIOV)]),
+	    ?FAIL({unexpected_sendv_result, N, Reason,
+                   Sz, iolist_size(RestIOV), length(RestIOV)});
 
 	{error, Reason} ->
 	    ?P("[client] sendv ~w failed: "
@@ -13176,9 +13177,10 @@ otp19482_simple_single_server_exchange(Sock, Verify, Sz, N) ->
 %% 1024*8 bytes, medium).
 
 otp19482_simple_multi_small(Config) when is_list(Config) ->
-    ?TT(?SECS(20)),
+    ?TT(?SECS(20 * which_factor(Config))),
     Cond = fun() ->
-                   has_support_ipv4()
+                   has_support_ipv4(),
+                   factor_limit(Config)
            end,
     Pre  = fun() ->
                    process_flag(trap_exit, true),
@@ -13201,9 +13203,10 @@ otp19482_simple_multi_small(Config) when is_list(Config) ->
     ?TC_TRY(?FUNCTION_NAME, Cond, Pre, TC, Post).
 
 otp19482_simple_multi_medium(Config) when is_list(Config) ->
-    ?TT(?SECS(20)),
+    ?TT(?SECS(20 * which_factor(Config))),
     Cond = fun() ->
-                   has_support_ipv4()
+                   has_support_ipv4(),
+                   factor_limit(Config)
            end,
     Pre  = fun() ->
                    process_flag(trap_exit, true),
@@ -13524,10 +13527,19 @@ otp19482_simple_multi_handler_init(Parent, ID, Num) ->
 otp19482_simple_multi_handler_loop(_Parent, ID, Sock, 0, Acc) ->
     %% Received all data, now send it back
     ?P("H[~w] -> entry when all data received - try send it back", [ID]),
-    ok = socket:sendv(Sock, lists:reverse(Acc)),
-    ?P("H[~w] -> data sent", [ID]),
-    _ = socket:shutdown(Sock, read_write),
-    exit(normal);
+    case otp19482_send(Sock, lists:reverse(Acc)) of
+        ok ->
+            ?P("H[~w] -> data sent", [ID]),
+            _ = socket:shutdown(Sock, read_write),
+            exit(normal);
+        {error, {send_limit, Remaining} = Reason} ->
+           ?P("H[~w] -> send failed: ~p", [ID, Remaining]),
+            exit({skip, Reason});
+        {error, Reason} ->
+            ?P("H[~w] -> send failed: "
+               "~n   ~p", [ID, Reason]),
+            ?FAIL(Reason)
+    end;
 otp19482_simple_multi_handler_loop(Parent, ID, Sock, Num, Acc) ->
     ?P("H[~w] -> entry when Num = ~w", [ID, Num]),
     case socket:recv(Sock, Num) of
@@ -13536,6 +13548,13 @@ otp19482_simple_multi_handler_loop(Parent, ID, Sock, Num, Acc) ->
             otp19482_simple_multi_handler_loop(Parent, ID, Sock,
                                                Num - byte_size(Data),
                                                [Data|Acc]);
+        
+        {error, {Reason, Data}} ->
+            ?P("H[~w] -> receive (with data) failure: "
+               "~n   sz(Data): ~w (~w)"
+               "~n   Reason:   ~p", [byte_size(Data), Num, Reason]),
+            exit({recv_failed});
+
         {error, Reason} ->
             ?P("H[~w] -> receive failure: "
                "~n   Reason: ~p", [Reason]),
@@ -13592,7 +13611,17 @@ otp19482_simple_multi_client_init(Parent, ID, LSA, Port, IOV) ->
     ?P("C[~w] -> try send message: "
        "~n   IOV Length: ~w"
        "~n   IOV size:   ~w", [ID, length(IOV), iolist_size(IOV)]),
-    ok = socket:sendv(Sock, IOV),
+    case otp19482_send(Sock, IOV) of
+        ok ->
+            ok;
+        {error, {send_limit, Remaining} = Reason} ->
+            ?P("C[~w] -> send failed: ~p bytes remaining", [ID, Remaining]),
+            ?SKIPE(Reason);
+        {error, Reason} ->
+            ?P("C[~w] -> send faild: "
+               "~n   ~p", [ID, Reason]),
+            ?FAIL(Reason)
+    end,
 
     %% _ = socket:setopt(Sock, otp, debug, false),
 
@@ -13640,6 +13669,40 @@ otp19482_simple_multi_client_recv_loop(Sock, ID, Num) ->
             ?P("C[~w] recv-loop -> receive failure:"
                "~n   Reason: ~p", [ID, Reason]),
             ?FAIL({recv_failure, Reason})
+    end.
+
+otp19482_send(Sock, IOV) ->
+    otp19482_send(Sock, IOV, 0, 10).
+    
+otp19482_send(_Sock, IOV, N, Limit) when (N > Limit) ->
+    ?P("~w -> send limit (~w) reached with ~w bytes still unsent",
+       [?FUNCTION_NAME, Limit, iolist_size(IOV)]),    
+    {error, {send_limit, iolist_size(IOV)}};
+otp19482_send(Sock, IOV, N, Limit) ->
+    ?P("~w(~w) -> try send ~w bytes",
+       [?FUNCTION_NAME, N, iolist_size(IOV)]),
+    case socket:sendv(Sock, IOV) of
+        ok ->
+            ok;
+        {error, enobufs = Reason} ->
+            ?P("~w(~w) -> ~p - sleep some and then try again",
+               [?FUNCTION_NAME, N, Reason]),
+            ?SLEEP(?SECS(1)),
+            otp19482_send(Sock, IOV, N+1, Limit);
+        {error, {enobufs = Reason, RestIOV}} when is_list(RestIOV) ->
+            ?P("~w(~w) -> ~p with ~w bytes in RestIOV - "
+               "sleep some and then try again",
+               [?FUNCTION_NAME, N, Reason, iolist_size(RestIOV)]),
+            ?SLEEP(?SECS(1)),
+            otp19482_send(Sock, RestIOV, N+1, Limit);
+        {error, {Reason, RestIOV}} when is_list(RestIOV) ->
+            ?P("~w(~w) -> ~p with ~w bytes in RestIOV - give up",
+               [?FUNCTION_NAME, N, Reason, iolist_size(RestIOV)]),
+            {error, Reason};
+        {error, Reason} ->
+            ?P("~w(~w) -> ~p with ~w bytes remaining in IOV - give up",
+               [?FUNCTION_NAME, N, Reason, iolist_size(IOV)]),
+            {error, Reason}
     end.
 
 
@@ -13958,6 +14021,27 @@ unlink_path(Path, Success, Failure)
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+factor_limit(Config) ->
+    FactorKey = kernel_factor,
+    case lists:keysearch(FactorKey, 1, Config) of
+        {value, {FactorKey, Factor}} when (Factor > 15) ->
+            skip("Very slow machine");
+        _ ->
+            ok
+    end.
+
+which_factor(Config) ->
+    FactorKey = kernel_factor,
+    case lists:keysearch(FactorKey, 1, Config) of
+        {value, {FactorKey, Factor}} ->
+            Factor;
+        _ ->
+            10
+    end.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 %% not_supported(What) ->
 %%     skip({not_supported, What}).
 
@@ -14025,36 +14109,11 @@ start_node(Name, Timeout) when is_integer(Timeout) andalso (Timeout > 0) ->
             
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-%% mq() ->
-%%     mq(self()).
-
-%% mq(Pid) when is_pid(Pid) ->
-%%     pi(Pid, messages).
-
-
-links() ->
-    links(self()).
-
-links(Pid) when is_pid(Pid) ->
-    pi(Pid, links).
-
-
-pi(Pid, Key) when is_pid(Pid) ->
-    {Key, Value} = process_info(Pid, Key),
-    Value.
-
-
-             
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-f(F, A) ->
-    lists:flatten(io_lib:format(F, A)).
-
 i(F) ->
     i(F, []).
 
 i(F, A) ->
-    FStr = f("[~s] ~p " ++ F, [?FTS(), self() | A]),
+    FStr = ?F("[~s] " ++ F, [?FTS()|A]),
     io:format(user, FStr ++ "~n", []),
     io:format(FStr, []).
 

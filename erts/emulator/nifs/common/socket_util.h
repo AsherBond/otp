@@ -1,6 +1,8 @@
 /*
  * %CopyrightBegin%
  *
+ * SPDX-License-Identifier: Apache-2.0
+ *
  * Copyright Ericsson AB 2018-2025. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -193,6 +195,9 @@ extern BOOLEAN_T esock_decode_timeval(ErlNifEnv*      env,
                                       struct timeval* timeP);
 
 extern
+char* esock_domain_to_string(int domain);
+
+extern
 void esock_encode_domain(ErlNifEnv*    env,
                          int           domain,
                          ERL_NIF_TERM* eDomain);
@@ -200,6 +205,9 @@ extern
 int esock_decode_domain(ErlNifEnv*   env,
                         ERL_NIF_TERM eDomain,
                         int*         domain);
+
+extern
+char* esock_protocol_to_string(int domain);
 
 extern
 BOOLEAN_T esock_decode_type(ErlNifEnv*   env,

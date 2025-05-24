@@ -1,6 +1,8 @@
 %%
 %% %CopyrightBegin%
 %%
+%% SPDX-License-Identifier: Apache-2.0
+%%
 %% Copyright Ericsson AB 2008-2025. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
@@ -47,6 +49,8 @@
          bad_service_name_length/2,
          bad_service_name_then_correct/1,
          bad_very_long_service_name/1,
+         banner_sent_to_client/1,
+         banner_not_sent_to_client/1,
          client_handles_keyboard_interactive_0_pwds/1,
          client_handles_banner_keyboard_interactive/1,
          client_info_line/1,
@@ -99,16 +103,9 @@
                                    [{client2server,Ciphs}, {server2client,Ciphs}]
                           end)()
         ).
-
-
--define(v(Key, Config), proplists:get_value(Key, Config)).
--define(v(Key, Config, Default), proplists:get_value(Key, Config, Default)).
-
-
 %%--------------------------------------------------------------------
 %% Common Test interface functions -----------------------------------
 %%--------------------------------------------------------------------
-
 suite() ->
     [{ct_hooks,[ts_install_cth]},
      {timetrap,{seconds,40}}].
@@ -158,7 +155,9 @@ groups() ->
 			     bad_service_name_then_correct
 			    ]},
      {authentication, [], [client_handles_keyboard_interactive_0_pwds,
-                           client_handles_banner_keyboard_interactive
+                           client_handles_banner_keyboard_interactive,
+                           banner_sent_to_client,
+                           banner_not_sent_to_client
 			  ]},
      {ext_info, [], [no_ext_info_s1,
                      no_ext_info_s2,
@@ -375,7 +374,7 @@ no_common_alg_server_disconnects(Config) ->
 	ssh_trpt_test_lib:exec(
 	  [{set_options, [print_ops, {print_messages,detail}]},
 	   {connect,
-	    server_host(Config),server_port(Config),
+	    ssh_test_lib:server_host(Config),ssh_test_lib:server_port(Config),
 	    [{silently_accept_hosts, true},
 	     {user_dir, user_dir(Config)},
 	     {user_interaction, false},
@@ -407,10 +406,10 @@ early_rce(Config) ->
     DataReq = <<?STRING(<<"lists:seq(1,10).">>)>>,
     SshMsgChannelRequest =
         ssh_connection:channel_request_msg(Id, TypeReq, WantReply, DataReq),
-    {ok,AfterKexState} =
+    {ok,_} =
         ssh_trpt_test_lib:exec(
           [{connect,
-            server_host(Config),server_port(Config),
+            ssh_test_lib:server_host(Config),ssh_test_lib:server_port(Config),
             [{preferred_algorithms,[{kex,[?DEFAULT_KEX]},
                                     {cipher,?DEFAULT_CIPHERS}
                                    ]},
@@ -459,7 +458,7 @@ custom_kexinit(Config) ->
 	ssh_trpt_test_lib:exec(
 	  [{set_options, [print_ops, {print_messages,detail}]},
 	   {connect,
-	    server_host(Config),server_port(Config),
+	    ssh_test_lib:server_host(Config), ssh_test_lib:server_port(Config),
 	    [{silently_accept_hosts, true},
 	     {user_dir, user_dir(Config)},
 	     {user_interaction, false},
@@ -567,7 +566,7 @@ do_gex_client_init(Config, {Min,N,Max}, {G,P}) ->
 	ssh_trpt_test_lib:exec(
 	  [{set_options, [print_ops, print_seqnums, print_messages]},
 	   {connect,
-	    server_host(Config),server_port(Config),
+	    ssh_test_lib:server_host(Config),ssh_test_lib:server_port(Config),
 	    [{silently_accept_hosts, true},
 	     {user_dir, user_dir(Config)},
 	     {user_interaction, false},
@@ -602,7 +601,7 @@ do_gex_client_init_old(Config, N, {G,P}) ->
 	ssh_trpt_test_lib:exec(
 	  [{set_options, [print_ops, print_seqnums, print_messages]},
 	   {connect,
-	    server_host(Config),server_port(Config),
+	    ssh_test_lib:server_host(Config),ssh_test_lib:server_port(Config),
 	    [{silently_accept_hosts, true},
 	     {user_dir, user_dir(Config)},
 	     {user_interaction, false},
@@ -859,6 +858,74 @@ client_handles_banner_keyboard_interactive(Config) ->
                                                  {cipher,?DEFAULT_CIPHERS}
                                                 ]}]
 			).
+
+banner_sent_to_client(Config) ->
+    BannerFun = fun(U) -> list_to_binary(U) end,
+    User = "foo",
+    Pwd = "morot",
+    UserDir = user_dir(Config),
+    {Pid, Host, Port} = ssh_test_lib:daemon([{system_dir, system_dir(Config)},
+					     {user_dir, UserDir},
+					     {password, Pwd},
+					     {failfun, fun ssh_test_lib:failfun/2},
+					     {bannerfun, BannerFun}]),
+
+    {ok,AfterUserAuthReqState} = connect_and_userauth_request(Host, Port, User, Pwd, UserDir),
+    {ok,EndState} =
+	ssh_trpt_test_lib:exec(
+	  [{match, #ssh_msg_userauth_banner{message = BannerFun(User),
+                                            language = <<>>}, receive_msg},
+	   {match, #ssh_msg_userauth_success{_='_'}, receive_msg}
+	  ], AfterUserAuthReqState),
+
+    {ok,_} = trpt_test_lib_send_disconnect(EndState),
+
+    ssh:stop_daemon(Pid),
+    Config.
+
+banner_not_sent_to_client(Config) ->
+    %% Bad bannerfun
+    BBF = fun(_U) -> no_banner_is_sent_because_bannerfun_return_is_not_binary end,
+    User = "foo",
+    Pwd = "morot",
+    UserDir = user_dir(Config),
+    {BBFPid, BBFHost, BBFPort} =
+        ssh_test_lib:daemon([{system_dir, system_dir(Config)},
+                             {user_dir, UserDir},
+                             {password, Pwd},
+                             {failfun, fun ssh_test_lib:failfun/2},
+                             {bannerfun, BBF}]),
+
+    {ok,BBFAfterUserAuthReqState} = connect_and_userauth_request(BBFHost,
+                                                                 BBFPort,
+                                                                 User, Pwd, UserDir),
+    {ok,BBFEndState} =
+	ssh_trpt_test_lib:exec(
+	  [{match, #ssh_msg_userauth_success{_='_'}, receive_msg}
+	  ], BBFAfterUserAuthReqState),
+
+    {ok,_} = trpt_test_lib_send_disconnect(BBFEndState),
+    ssh:stop_daemon(BBFPid),
+
+    %% No bannerfun
+    {Pid, Host, Port} =
+        ssh_test_lib:daemon([{system_dir, system_dir(Config)},
+                             {user_dir, UserDir},
+                             {password, Pwd},
+                             {failfun, fun ssh_test_lib:failfun/2}]),
+
+    {ok,AfterUserAuthReqState} = connect_and_userauth_request(Host,
+                                                              Port,
+                                                              User, Pwd, UserDir),
+    {ok,EndState} =
+	ssh_trpt_test_lib:exec(
+	  [{match, #ssh_msg_userauth_success{_='_'}, receive_msg}
+	  ], AfterUserAuthReqState),
+
+    {ok,_} = trpt_test_lib_send_disconnect(EndState),
+    ssh:stop_daemon(Pid),
+
+    Config.
 
 %%%--------------------------------------------------------------------
 client_info_line(Config) ->
@@ -1166,7 +1233,7 @@ kex_strict_helper(Config, TestMessages, ExpectedReason) ->
     {ok, _AfterKexState} =
         ssh_trpt_test_lib:exec(
           [{connect,
-            server_host(Config),server_port(Config),
+            ssh_test_lib:server_host(Config),ssh_test_lib:server_port(Config),
             [{preferred_algorithms,[{kex,[?DEFAULT_KEX]},
                                     {cipher,?DEFAULT_CIPHERS}
                                    ]},
@@ -1279,13 +1346,12 @@ client_close_after_hello(Config0) ->
                                         {max_sessions,MaxSessions},
                                         {negotiation_timeout,SleepSec*1000}
                                        ]),
-
-    {_Parents0, Conns0, []} = find_handshake_parent(server_port(Config)),
-
+    {_Parents0, Conns0, []} =
+        ssh_test_lib:find_handshake_parent(ssh_test_lib:server_port(Config)),
     Cs =
         [ssh_trpt_test_lib:exec(
            [{connect,
-             server_host(Config),server_port(Config),
+             ssh_test_lib:server_host(Config),ssh_test_lib:server_port(Config),
              [{preferred_algorithms,[{kex,[?DEFAULT_KEX]},
                                      {cipher,?DEFAULT_CIPHERS}
                                     ]},
@@ -1297,16 +1363,15 @@ client_close_after_hello(Config0) ->
              ]},
             {send, hello}
            ]) || _ <- lists:seq(1,MaxSessions+100)],
-
     ct:log("=== Tried to start ~p sessions.", [length(Cs)]),
-
     ssh_info:print(fun ct:log/2),
-    {Parents, Conns, Handshakers} = find_handshake_parent(server_port(Config)),
+    {Parents, Conns, Handshakers} =
+        ssh_test_lib:find_handshake_parent(ssh_test_lib:server_port(Config)),
     ct:log("Found (Port=~p):~n"
            "  Connections  (length ~p): ~p~n"
            "  Handshakers  (length ~p): ~p~n"
            "  with parents (length ~p): ~p",
-           [server_port(Config),
+           [ssh_test_lib:server_port(Config),
             length(Conns), Conns,
             length(Handshakers), Handshakers,
             length(Parents), Parents]),
@@ -1317,12 +1382,13 @@ client_close_after_hello(Config0) ->
             timer:sleep((SleepSec+15)*1000),
             ct:log("After sleeping", []),
             ssh_info:print(fun ct:log/2),
-            {Parents2, Conns2, Handshakers2} = find_handshake_parent(server_port(Config)),
+            {Parents2, Conns2, Handshakers2} =
+                ssh_test_lib:find_handshake_parent(ssh_test_lib:server_port(Config)),
             ct:log("Found (Port=~p):~n"
                    "  Connections  (length ~p): ~p~n"
                    "  Handshakers  (length ~p): ~p~n"
                    "  with parents (length ~p): ~p",
-                   [server_port(Config),
+                   [ssh_test_lib:server_port(Config),
                     length(Conns2), Conns2,
                     length(Handshakers2), Handshakers2,
                     length(Parents2), Parents2]),
@@ -1430,8 +1496,10 @@ start_std_daemon(Config, ExtraOpts) ->
 
 
 stop_std_daemon(Config) ->
-    ssh:stop_daemon(server_pid(Config)),
-    ct:log("Std server ~p at ~p:~p stopped", [server_pid(Config), server_host(Config), server_port(Config)]),
+    ssh:stop_daemon(ssh_test_lib:server_pid(Config)),
+    ct:log("Std server ~p at ~p:~p stopped",
+           [ssh_test_lib:server_pid(Config), ssh_test_lib:server_host(Config),
+            ssh_test_lib:server_port(Config)]),
     lists:keydelete(server, 1, Config).
 
 
@@ -1439,28 +1507,24 @@ check_std_daemon_works(Config, Line) ->
     case std_connect(Config) of
 	{ok,C} ->
 	    ct:log("Server ~p:~p ~p is ok at line ~p",
-		   [server_host(Config), server_port(Config), 
-		    server_pid(Config), Line]),
+		   [ssh_test_lib:server_host(Config), ssh_test_lib:server_port(Config),
+		    ssh_test_lib:server_pid(Config), Line]),
 	    ok = ssh:close(C),
 	    Config;
 	Error = {error,_} ->
 	    ct:fail("Standard server ~p:~p ~p is ill at line ~p: ~p",
-		    [server_host(Config), server_port(Config), 
-		     server_pid(Config), Line, Error])
+		    [ssh_test_lib:server_host(Config), ssh_test_lib:server_port(Config),
+		     ssh_test_lib:server_pid(Config), Line, Error])
     end.
-
-server_pid(Config)  -> element(1,?v(server,Config)).
-server_host(Config) -> element(2,?v(server,Config)).
-server_port(Config) -> element(3,?v(server,Config)).
 
 server_user_password(Config) -> server_user_password(1, Config).
 
 server_user_password(N, Config) -> lists:nth(N, ?v(user_passwords,Config)).
-    
 
-std_connect(Config) -> 
-    std_connect({server_host(Config), server_port(Config)}, Config).
-    
+std_connect(Config) ->
+    std_connect({ssh_test_lib:server_host(Config),
+                 ssh_test_lib:server_port(Config)}, Config).
+
 std_connect({Host,Port}, Config) ->
     std_connect({Host,Port}, Config, []).
 
@@ -1487,7 +1551,7 @@ connect_and_kex(Config) ->
 connect_and_kex(Config, InitialState) ->
     ssh_trpt_test_lib:exec(
       [{connect,
-	server_host(Config),server_port(Config),
+	ssh_test_lib:server_host(Config),ssh_test_lib:server_port(Config),
 	[{preferred_algorithms,[{kex,[?DEFAULT_KEX]},
                                 {cipher,?DEFAULT_CIPHERS}
                                ]},
@@ -1522,42 +1586,41 @@ disconnect(Code) ->
 	  ]}.
 
 %%%----------------------------------------------------------------
-find_handshake_parent(Port) ->
-    Acc = {_Parents=[], _Connections=[], _Handshakers=[]},
-    find_handshake_parent(supervisor:which_children(sshd_sup), Port, Acc).
+connect_and_userauth_request(Host, Port, User, Pwd, UserDir) ->
+    ssh_trpt_test_lib:exec(
+          [{set_options, [print_ops, print_messages]},
+           {connect,Host,Port,
+            [{preferred_algorithms,[{kex,[?DEFAULT_KEX]},
+                                    {cipher,?DEFAULT_CIPHERS}
+                                   ]},
+             {silently_accept_hosts, true},
+             {recv_ext_info, false},
+             {user_dir, UserDir},
+             {user_interaction, false}
+            ]},
+           receive_hello,
+           {send, hello},
+           {send, ssh_msg_kexinit},
+           {match, #ssh_msg_kexinit{_='_'}, receive_msg},
+           {send, ssh_msg_kexdh_init},
+           {match,# ssh_msg_kexdh_reply{_='_'}, receive_msg},
+           {send, #ssh_msg_newkeys{}},
+           {match, #ssh_msg_newkeys{_='_'}, receive_msg},
+           {send, #ssh_msg_service_request{name = "ssh-userauth"}},
+	   {match, #ssh_msg_service_accept{name = "ssh-userauth"}, receive_msg},
+	   {send, #ssh_msg_userauth_request{user = User,
+					    service = "ssh-connection",
+					    method = "password",
+					    data = <<?BOOLEAN(?FALSE),
+						     ?STRING(unicode:characters_to_binary(Pwd))>>
+					   }}
+          ]).
 
-
-find_handshake_parent([{{ssh_system_sup,{address,_,Port,_}},
-                        Pid,supervisor, [ssh_system_sup]}|_],
-                      Port, Acc) ->
-    find_handshake_parent(supervisor:which_children(Pid), Port, Acc);
-
-find_handshake_parent([{{ssh_acceptor_sup,{address,_,Port,_}},
-                        PidS,supervisor,[ssh_acceptor_sup]}|T],
-                       Port, {AccP,AccC,AccH}) ->
-    ParentHandshakers =
-        [{PidW,PidH} ||
-            {{ssh_acceptor_sup,{address,_,Port1,_}}, PidW, worker,
-             [ssh_acceptor]} <- supervisor:which_children(PidS),
-            Port1 == Port,
-            PidH <- element(2, process_info(PidW,links)),
-            is_pid(PidH),
-            process_info(PidH,current_function) ==
-                {current_function,
-                 {ssh_connection_handler,handshake,4}}],
-    {Parents,Handshakers} = lists:unzip(ParentHandshakers),
-    find_handshake_parent(T, Port, {AccP++Parents, AccC, AccH++Handshakers});
-
-find_handshake_parent([{_Ref,PidS,supervisor,[ssh_connection_sup]}|T],
-                      Port, {AccP,AccC,AccH}) ->
-    Connections =
-        [Pid ||
-            {connection,Pid,worker,[ssh_connection_handler]} <-
-                supervisor:which_children(PidS)],
-    find_handshake_parent(T, Port, {AccP, AccC++Connections, AccH});
-
-find_handshake_parent([_|T], Port, Acc) ->
-    find_handshake_parent(T, Port, Acc);
-
-find_handshake_parent(_, _,  {AccP,AccC,AccH}) ->
-    {lists:usort(AccP), lists:usort(AccC), lists:usort(AccH)}.
+trpt_test_lib_send_disconnect(State) ->
+    ssh_trpt_test_lib:exec(
+      [{send, #ssh_msg_disconnect{code = ?SSH_DISCONNECT_BY_APPLICATION,
+                                  description = "End of the fun",
+                                  language = ""
+                                 }},
+       close_socket
+      ], State).

@@ -1,7 +1,9 @@
 %%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 2004-2024. All Rights Reserved.
+%% SPDX-License-Identifier: Apache-2.0
+%%
+%% Copyright Ericsson AB 2004-2025. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -2617,7 +2619,7 @@ otp_6554(Config) when is_list(Config) ->
         "lists:reverse(" ++ _ =
         comm_err(<<"F=fun() -> hello end, lists:reverse(F).">>),
     "exception error: no function clause matching "
-        "lists:reverse(34) (lists.erl, line " ++ _ =
+        "lists:reverse(34) (lists.erl:" ++ _ =
         comm_err(<<"lists:reverse(34).">>),
     "exception error: function_clause" =
         comm_err(<<"erlang:error(function_clause, 4).">>),

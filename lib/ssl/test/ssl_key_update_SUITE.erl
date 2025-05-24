@@ -1,6 +1,8 @@
 %%
 %% %CopyrightBegin%
 %%
+%% SPDX-License-Identifier: Apache-2.0
+%%
 %% Copyright Ericsson AB 2020-2025. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
@@ -52,7 +54,8 @@ all() ->
     [{group, 'tlsv1.3'}].
 
 groups() ->
-    [{'tlsv1.3', [], tls_1_3_tests()}].
+    [{'tlsv1.3', [], [{group, transport_socket} | tls_1_3_tests()]},
+     {transport_socket, [], tls_1_3_tests()}].
 
 tls_1_3_tests() ->
     [key_update_at_client,

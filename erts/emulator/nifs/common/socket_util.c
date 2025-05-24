@@ -1,6 +1,8 @@
 /*
  * %CopyrightBegin%
  *
+ * SPDX-License-Identifier: Apache-2.0
+ *
  * Copyright Ericsson AB 2018-2025. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -169,31 +171,14 @@ extern
 ErlNifMutex* esock_mutex_create(const char* pre, char* buf, SOCKET sock)
 {
 #if defined(ESOCK_VERBOSE_MTX_NAMES)
-    /*
-    ESOCK_PRINTF("esock_mutex_create -> create name with"
-                 "\r\n   pre:  %s"
-                 "\r\n   sock: %d"
-                 "\r\n", pre, sock);
-    */
     sprintf(buf, "%s[" SOCKET_FORMAT_STR "]", pre, sock);
 #else
-    /*
-    ESOCK_PRINTF("esock_mutex_create -> create name with"
-                 "\r\n   pre: %s"
-                 "\r\n", pre);
-    */
     VOID(sock);
     sprintf(buf, "%s", pre);
 #endif
 
-    /*
-    ESOCK_PRINTF("esock_mutex_create -> create mtx with name: %s"
-                 "\r\n", buf);
-    */
-
     return enif_mutex_create(buf);
 }
-
 
 
 /* *** esock_get_uint_from_map ***
@@ -1911,6 +1896,100 @@ void esock_encode_domain(ErlNifEnv*    env,
 
 
 
+/*
+ * This is only intended for debugging.
+ * Transforms a 'domain' to a printable string.
+ */
+extern
+char* esock_domain_to_string(int domain)
+{
+    switch (domain) {
+    case AF_INET:
+        return "inet";
+        break;
+
+#if defined(HAVE_IN6) && defined(AF_INET6)
+    case AF_INET6:
+        return "inet6";
+        break;
+#endif
+
+#ifdef HAS_AF_LOCAL
+    case AF_LOCAL:
+        return "local";
+        break;
+#endif
+
+#ifdef AF_UNSPEC
+    case AF_UNSPEC:
+        return "unspec";
+        break;
+#endif
+
+    default:
+        return "undefined";
+    }
+}
+
+
+
+/*
+ * This is only intended for debugging.
+ * Transforms a 'protocol' to a printable string.
+ */
+extern
+char* esock_protocol_to_string(int protocol)
+{
+    switch (protocol) {
+#if defined(IPPROTO_IP)
+    case IPPROTO_IP:
+        return "ip";
+        break;
+#endif
+
+#if defined(IPPROTO_ICMP)
+    case IPPROTO_ICMP:
+        return "icmp";
+        break;
+#endif
+
+#if defined(IPPROTO_IGMP)
+    case IPPROTO_IGMP:
+        return "igmp";
+        break;
+#endif
+
+#if defined(IPPROTO_TCP)
+    case IPPROTO_TCP:
+        return "tcp";
+        break;
+#endif
+
+#if defined(IPPROTO_UDP)
+    case IPPROTO_UDP:
+        return "udp";
+        break;
+#endif
+
+#if defined(IPPROTO_SCTP)
+    case IPPROTO_SCTP:
+        return "sctp";
+        break;
+#endif
+
+#if defined(IPPROTO_RAW)
+    case IPPROTO_RAW:
+        return "raw";
+        break;
+#endif
+
+    default:
+        return "undefined";
+    }
+}
+
+
+
 /* +++ esock_decode_type +++
  *
  * Decode the Erlang form of the 'type' type, that is: 
@@ -2927,11 +3006,10 @@ size_t esock_strnlen(const char *s, size_t maxlen)
  *
  */
 extern
-void __noreturn
-esock_abort(const char* expr,
-                 const char* func,
-                 const char* file,
-                 int         line)
+void __noreturn esock_abort(const char* expr,
+                            const char* func,
+                            const char* file,
+                            int         line)
 {
 #if 0
     fflush(stdout);

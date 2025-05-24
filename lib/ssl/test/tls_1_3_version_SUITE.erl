@@ -1,6 +1,8 @@
 %%
 %% %CopyrightBegin%
 %%
+%% SPDX-License-Identifier: Apache-2.0
+%%
 %% Copyright Ericsson AB 2019-2025. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
@@ -98,8 +100,8 @@ all() ->
 
 groups() ->
     [
-     {rsa, [], [reject_legacy_cert | tls_1_3_1_2_tests() ++ legacy_tests()]},
-     {ecdsa, [], tls_1_3_1_2_tests()}
+     {rsa, [parallel], [reject_legacy_cert | tls_1_3_1_2_tests() ++ legacy_tests()]},
+     {ecdsa, [parallel], tls_1_3_1_2_tests()}
     ].
 
 cert_groups() ->

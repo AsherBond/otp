@@ -1,7 +1,9 @@
-%
+%%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 1999-2024. All Rights Reserved.
+%% SPDX-License-Identifier: Apache-2.0
+%%
+%% Copyright Ericsson AB 1999-2025. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -9,7 +11,7 @@
 %%
 %%     http://www.apache.org/licenses/LICENSE-2.0
 %%
-
+%% Unless required by applicable law or agreed to in writing, software
 %% distributed under the License is distributed on an "AS IS" BASIS,
 %% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 %% See the License for the specific language governing permissions and
@@ -520,7 +522,7 @@ init_per_suite(Config) ->
     {ok, _} = zip:unzip("cmactestvectors.zip"),
     {ok, _} = zip:unzip("gcmtestvectors.zip"),
 
-    try is_ok(crypto:start()) of
+    try is_ok(application:start(crypto)) of
 	ok ->
             catch ct:comment("~s",[element(3,hd(crypto:info_lib()))]),
             catch ct:log("crypto:info()     -> ~p~n"
@@ -755,13 +757,13 @@ no_support(Config) when is_list(Config) ->
     false = is_supported(Type).
 %%--------------------------------------------------------------------
 crypto_load(_Config) ->
-    (catch crypto:stop()),
+    (catch application:stop(crypto)),
     code:delete(crypto),
     code:purge(crypto),
-    crypto:start().
+    application:start(crypto).
 %%--------------------------------------------------------------------
 crypto_load_and_call(_Config) ->
-    (catch crypto:stop()),
+    (catch application:stop(crypto)),
     code:delete(crypto),
     code:purge(crypto),
     Key0 = "ablurf123BX#$;3",
@@ -1648,11 +1650,29 @@ aead_cipher_ng({Type, Key, PlainText, IV, AAD, CipherText, CipherTag, _Info}=T) 
 aead_cipher_ng({Type, Key, PlainText, IV, AAD, CipherText, CipherTag, TagLen, _Info}=T) ->
     <<TruncatedCipherTag:TagLen/binary, _/binary>> = CipherTag,
     Plain = iolist_to_binary(PlainText),
-    cipher_test(T,
-                fun() -> crypto:crypto_one_time_aead(Type, Key, IV, PlainText, AAD, TagLen, true) end,
-                {CipherText, TruncatedCipherTag},
-                fun() -> crypto:crypto_one_time_aead(Type, Key, IV, CipherText, AAD, TruncatedCipherTag, false) end,
-                Plain).
+    T1 = cipher_test(T,
+                     fun() -> crypto:crypto_one_time_aead(Type, Key, IV, PlainText, AAD, TagLen, true) end,
+                     {CipherText, TruncatedCipherTag},
+                     fun() -> crypto:crypto_one_time_aead(Type, Key, IV, CipherText, AAD, TruncatedCipherTag, false) end,
+                     Plain),
+    case T1 == ok of
+        false ->
+            T1;
+        true ->
+            %% ok
+            CipherTextCipherTag = <<CipherText/binary, TruncatedCipherTag/binary>>,
+            cipher_test(T,
+                        fun() ->
+                                Handle = crypto:crypto_one_time_aead_init(Type, Key, TagLen, true),
+                                crypto:crypto_one_time_aead(Handle, IV, PlainText, AAD)
+                        end,
+                        CipherTextCipherTag,
+                        fun() ->
+                                Handle = crypto:crypto_one_time_aead_init(Type, Key, TagLen, false),
+                                crypto:crypto_one_time_aead(Handle, IV, CipherTextCipherTag, AAD)
+                        end,
+                        Plain)
+    end.
 
 aead_cipher_bad_tag({Type, Key, _PlainText, IV, AAD, CipherText, CipherTag, _Info}=T) ->
     BadTag = mk_bad_tag(CipherTag),
@@ -1708,7 +1728,7 @@ do_cipher_tests(F, TestVectors) when is_function(F,1) ->
         [] ->
             ct:comment("All ~p passed", [length(Passed)]);
         _ ->
-            ct:log("~p",[hd(Failed)]),
+            ct:log("~p", [hd(Failed)]),
             ct:comment("Passed: ~p, BothFailed: ~p OnlyOneFailed: ~p",
                        [length(Passed), length(BothFailed), length(Failed)-length(BothFailed)]),
             ct:fail("Failed", [])
@@ -4902,6 +4922,7 @@ try_enable_fips_mode(Config) ->
     FIPSConfig = [{fips, true} | Config],
     case crypto:info_fips() of
         enabled ->
+            check_fips_provider(),
             FIPSConfig;
         not_enabled ->
             %% Erlang/crypto configured with --enable-fips
@@ -4909,6 +4930,7 @@ try_enable_fips_mode(Config) ->
 		true ->
                     %% and also the cryptolib is fips enabled
 		    enabled = crypto:info_fips(),
+                    check_fips_provider(),
 		    FIPSConfig;
 		false ->
                     try
@@ -4928,6 +4950,23 @@ try_enable_fips_mode(Config) ->
         not_supported ->
             {skip, "FIPS mode not supported"}
     end.
+
+check_fips_provider() ->
+    case have_provider_support() of
+        true ->
+            case crypto:info() of
+                #{fips_provider_available := true,
+                  fips_provider_buildinfo := BI} when is_list(BI) ->
+                    ok
+            end;
+        false ->
+            ok
+    end.
+
+have_provider_support() ->
+    [{_, PackedVsn, _}] = crypto:info_lib(),
+    MajorVsn = (PackedVsn bsr 28),
+    MajorVsn >= 3.
 
 pbkdf2_hmac() ->
   [{doc, "Test the pbkdf2_hmac function"}].

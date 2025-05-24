@@ -1,6 +1,8 @@
 %%
 %% %CopyrightBegin%
 %%
+%% SPDX-License-Identifier: Apache-2.0
+%%
 %% Copyright Ericsson AB 2006-2025. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
@@ -60,7 +62,8 @@ convention, add `.zip` to the filename.
   archive, the whole archive must be recreated.
 """.
 -define(ERL_TAR_COMPATIBILITY, ~"erl_tar compatibility functions").
--moduledoc(#{ titles => [{function, ?ERL_TAR_COMPATIBILITY}]}).
+
+-compile(nowarn_deprecated_catch).
 
 %% Basic api
 -export([unzip/1, unzip/2, extract/1, extract/2,
@@ -393,7 +396,7 @@ Options:
       Archive :: file:name() | binary(),
       Options :: [Option],
       Option  :: {file_list, FileList} | cooked
-               | keep_old_files | verbose | memory |
+               | keep_old_files | verbose | memory | skip_directories |
                  {file_filter, FileFilter} | {cwd, CWD} |
                  {extra, extra()},
       FileList :: [file:name()],
@@ -701,7 +704,7 @@ One option is available:
       RetValue :: {ok, CommentAndFiles} | {error, Reason :: term()},
       CommentAndFiles :: [zip_comment() | zip_file()],
       Options :: [Option],
-      Option :: cooked | {extra, extra()}).
+      Option :: cooked | skip_directories | {extra, extra()}).
 
 list_dir(F, Options) ->
     case ?CATCH(do_list_dir(F, Options)) of
@@ -1081,7 +1084,7 @@ get_list_dir_options(F, Options) ->
     get_list_dir_opt(Options, Opts).
 
 %% aliases for erl_tar compatibility
--doc #{ title => ?ERL_TAR_COMPATIBILITY }.
+-doc(#{group => ?ERL_TAR_COMPATIBILITY }).
 -doc #{ equiv => list_dir(Archive, []) }.
 -spec(table(Archive) -> RetValue when
       Archive :: file:name() | binary(),
@@ -1090,7 +1093,7 @@ get_list_dir_options(F, Options) ->
 
 table(F) -> list_dir(F).
 
--doc #{ title => ?ERL_TAR_COMPATIBILITY }.
+-doc(#{group => ?ERL_TAR_COMPATIBILITY }).
 -doc #{ equiv => list_dir(Archive, Options) }.
 -spec(table(Archive, Options) -> RetValue when
       Archive :: file:name() | binary(),
@@ -1102,7 +1105,7 @@ table(F) -> list_dir(F).
 
 table(F, O) -> list_dir(F, O).
 
--doc #{ title => ?ERL_TAR_COMPATIBILITY }.
+-doc(#{group => ?ERL_TAR_COMPATIBILITY }).
 -doc(#{ equiv => zip(Name, FileList)} ).
 -spec(create(Name, FileList) -> RetValue when
       Name     :: file:name(),
@@ -1115,7 +1118,7 @@ table(F, O) -> list_dir(F, O).
 
 create(F, Fs) -> zip(F, Fs).
 
--doc #{ title => ?ERL_TAR_COMPATIBILITY }.
+-doc(#{group => ?ERL_TAR_COMPATIBILITY }).
 -doc(#{ equiv => zip(Name, FileList, Options) }).
 -spec(create(Name, FileList, Options) -> RetValue when
       Name     :: file:name(),
@@ -1129,7 +1132,7 @@ create(F, Fs) -> zip(F, Fs).
                 | {error, Reason :: term()}).
 create(F, Fs, O) -> zip(F, Fs, O).
 
--doc #{ title => ?ERL_TAR_COMPATIBILITY }.
+-doc(#{group => ?ERL_TAR_COMPATIBILITY }).
 -doc(#{ equiv => unzip(Archive)} ).
 -spec(extract(Archive) -> RetValue when
       Archive :: file:name() | binary(),
@@ -1142,7 +1145,7 @@ create(F, Fs, O) -> zip(F, Fs, O).
 
 extract(F) -> unzip(F).
 
--doc #{ title => ?ERL_TAR_COMPATIBILITY }.
+-doc(#{group => ?ERL_TAR_COMPATIBILITY }).
 -doc(#{ equiv => unzip(Archive, Options) }).
 -spec(extract(Archive, Options) -> RetValue when
       Archive :: file:name() | binary(),
@@ -2465,10 +2468,21 @@ file_header_ctime_to_datetime(FH) ->
 %% bit   0 - 4 	 5 - 10 11 - 15    16 - 20      21 - 24        25 - 31
 %% value second  minute hour 	   day (1 - 31) month (1 - 12) years from 1980
 dos_date_time_to_datetime(DosDate, DosTime) ->
-    <<Hour:5, Min:6, Sec:5>> = <<DosTime:16>>,
+    <<Hour:5, Min:6, DoubleSec:5>> = <<DosTime:16>>,
     <<YearFrom1980:7, Month:4, Day:5>> = <<DosDate:16>>,
-    {{YearFrom1980+1980, Month, Day},
-     {Hour, Min, Sec * 2}}.
+
+    Datetime = {{YearFrom1980+1980, Month, Day},
+                {Hour, Min, DoubleSec * 2}},
+    if DoubleSec > 29 ->
+            %% If DoubleSec * 2 > 59, something is broken
+            %% with this archive, but unzip wraps the value
+            %% so we do the same by converting to greg seconds
+            %% and then back again.
+            calendar:gregorian_seconds_to_datetime(
+              calendar:datetime_to_gregorian_seconds(Datetime));
+       true ->
+            Datetime
+    end.
 
 dos_date_time_from_datetime({{Year, Month, Day}, {Hour, Min, Sec}}) ->
     YearFrom1980 = Year-1980,
