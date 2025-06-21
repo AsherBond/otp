@@ -178,7 +178,7 @@ jobs:
               bash -c 'cp ../otp_cache.tar /github/'
           fi
           docker run -v $PWD:/github --entrypoint "" otp \
-            bash -c 'set -x; C_APPS=$(ls -d ./lib/*/c_src); find Makefile ./make ./erts ./bin/`erts/autoconf/config.guess` ./lib/erl_interface ./lib/jinterface ${C_APPS} `echo "${C_APPS}" | sed -e 's:c_src$:priv:'` -type f -newer README.md \! -name "*.beam" \! -path "*/doc/*" | xargs tar --transform "s:^./:otp/:" -uvf /github/otp_cache.tar'
+            bash -c 'set -x; C_APPS=$(ls -d ./lib/*/c_src); find Makefile ./make ./erts ./bin/`erts/autoconf/config.guess` ./lib/erl_interface ./lib/jinterface ${C_APPS} `echo "${C_APPS}" | sed -e 's:c_src$:priv:'` -type f -newer README.md \! -name "*.beam" \! -path "*/doc/*" \! -path "./erts/preloaded/*" | xargs tar --transform "s:^./:otp/:" -uvf /github/otp_cache.tar'
           gzip otp_cache.tar
       - name: Upload pre-built tar archives
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # ratchet:actions/upload-artifact@v4.6.2
@@ -397,25 +397,55 @@ jobs:
               for FLAVOR in ${FLAVORS}; do
                 echo "::group::{TYPE=$TYPE FLAVOR=$FLAVOR}"
                 docker run otp \
-                  "if [ ${TYPE} = \"valgrind\" ]; then sudo apt-get install -y valgrind bc; fi && \
-                   make TYPE=$TYPE FLAVOR=$FLAVOR && \
-                   cerl -$TYPE -emu_flavor $FLAVOR -noshell -s init stop"
+                  "set -xe;
+
+                   if [ '${TYPE}' = 'valgrind' ]; then sudo apt-get install -y valgrind bc; fi;
+
+                   echo 'Setup start flags';
+                   if [ '$TYPE' != 'opt' ]; then EMU_TYPE='-emu_type $TYPE'; fi;
+                   if [ '$FLAVOR' = 'jit' ]; then
+                      EMU_FLAVOR='smp'
+                   else
+                      EMU_FLAVOR='$FLAVOR'
+                   fi;
+
+                   echo 'Build type and flavor and test starting in source tree';
+                   TYPE=$TYPE FLAVOR=$FLAVOR ./otp_build boot -a;
+                   cerl -$TYPE -emu_flavor \$EMU_FLAVOR -noshell -s init stop;
+
+                   echo 'Install and test installation';
+                   sudo make install TYPE=$TYPE FLAVOR=$FLAVOR;
+                   if [ $TYPE != 'valgrind' ] && [ $TYPE != 'asan' ]; then
+                       erl \$EMU_TYPE -emu_flavor \$EMU_FLAVOR -noshell -s init stop;
+                   fi
+
+                   echo 'Release and test release'
+                   ./otp_build release -a \$(pwd)/test_release/;
+                   (cd \$(pwd)/test_release/ && ./Install -minimal \$(pwd));
+                   TYPE=$TYPE FLAVOR=$FLAVOR ./otp_build release -a \$(pwd)/test_release;
+                   if [ $TYPE != 'valgrind' ] && [ $TYPE != 'asan' ]; then
+                       test_release/bin/erl \$EMU_TYPE -emu_flavor \$EMU_FLAVOR -noshell -s init stop;
+                   fi"
                 echo "::endgroup::"
               done
             done
       - name: Build Erlang/OTP JIT Win32 ABI
         if: ${{ matrix.flavor == 'jit' }}
         run: >
-            docker run otp './configure CFLAGS="$CFLAGS -DERTS_JIT_ABI_WIN32=1" &&
-                 make && make TYPE=debug &&
+            docker run otp \
+                'set -xe;
+                 ./configure CFLAGS="$CFLAGS -DERTS_JIT_ABI_WIN32=1";
+                 make && make TYPE=debug;
                  cerl -noshell -s init stop && cerl -debug -noshell -s init stop'
 
       - name: Build Erlang/OTP with LTTNG
         if: ${{ matrix.flavor == 'jit' }}
         run: >
-            docker run otp 'sudo apt-get install -y lttng-tools &&
-                 ./configure --enable-dynamic-trace=lttng &&
-                 make && make TYPE=debug &&
+            docker run otp \
+                'set -xe;
+                 sudo apt-get install -y lttng-tools;
+                 ./configure --enable-dynamic-trace=lttng;
+                 make && make TYPE=debug;
                  cerl -noshell -s init stop && cerl -debug -noshell -s init stop'
 
       - name: Start Erlang with various start options
@@ -455,7 +485,7 @@ jobs:
         with:
           name: otp_prebuilt
       - name: Build on FreeBSD
-        uses: vmactions/freebsd-vm@c3ae29a132c8ef1924775414107a97cac042aad5 # ratchet:vmactions/freebsd-vm@v1
+        uses: vmactions/freebsd-vm@966989c456d41351f095a421f60e71342d3bce41 # v1
         with:
             usesh: true
             copyback: false
@@ -948,7 +978,7 @@ jobs:
 
       - name: Attest Distribution Assets with SBoM
         id: attest-sbom
-        uses: actions/attest-sbom@115c3be05ff3974bcbd596578934b3f9ce39bf68 # ratchet:actions/attest-sbom@v2
+        uses: actions/attest-sbom@bd218ad0dbcb3e146bd073d1d9c6d78e08aa8a0b # v2
         with:
           subject-path: |
             artifacts/*.tar.gz
@@ -976,7 +1006,7 @@ jobs:
           path: "attestations/*.sigstore"
 
       - name: Upload pre-built and doc tar archives
-        uses: softprops/action-gh-release@da05d552573ad5aba039eaac05058a918a7bf631 # ratchet:softprops/action-gh-release@v2.2.2
+        uses: softprops/action-gh-release@72f2c25fcb47643c292f7107632f7a47c1df5cd8 # v2.3.2
         with:
           name: OTP ${{ steps.tag.outputs.vsn }}
           files: |

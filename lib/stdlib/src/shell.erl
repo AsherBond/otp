@@ -378,8 +378,15 @@ server_loop(N0, Eval_0, Bs00, RT, FT, Ds00, History0, Results0) ->
                             [N]),
             server_loop(N0, Eval0, Bs0, RT, FT, Ds0, History0, Results0);
         eof ->
-            catch fwrite_severity(fatal, <<"Terminating erlang (~w)">>, [node()]),
-            halt()
+            RemoteShell = node() =/= node(group_leader()),
+            case RemoteShell of
+                true ->
+                    exit(Eval0, kill),
+                    terminated;
+                false ->
+                    catch fwrite_severity(fatal, <<"Terminating erlang (~w)">>, [node()]),
+                    halt()
+            end
     end.
 
 get_command(Prompt, Eval, Bs, RT, FT, Ds) ->
@@ -395,7 +402,23 @@ get_command(Prompt, Eval, Bs, RT, FT, Ds) ->
                 _ = [io:setopts([{line_history, PreviousHistory}]) || PreviousHistory =/= undefined],
                 exit(
                   case Res of
-                      {ok,Toks,_EndPos} ->
+                      {ok,Toks0,_EndPos} ->
+                          %% local 'fun' fixer
+                          %% when we parse a 'fun' expression within a shell call or function definition
+                          %% we need to add a local prefix (if the 'fun' expression did not have a module specified)
+                          LocalFunFixer = fun F([{'fun',Anno}=A,{atom,_,Func}=B,{'/',_}=C,{integer,_,Arity}=D| Rest],Acc) ->
+                              case erl_internal:bif(Func, Arity) of
+                                  true ->
+                                      F(Rest, [D,C,B,{':',A},{atom,Anno,'erlang'},A | Acc]);
+                                  false ->
+                                      F(Rest, [D,C,B,{':',A},{atom,Anno,'shell_default'},A | Acc])
+                              end;
+                              F([H|Rest], Acc) ->
+                                  F(Rest, [H | Acc]);
+                              F([], Acc) ->
+                                  lists:reverse(Acc)
+                          end,
+                          Toks = LocalFunFixer(Toks0, []),
                           %% NOTE: we can handle function definitions, records and type declarations
                           %% but this cannot be handled by the function which only expects erl_parse:abstract_expressions()
                           %% for now just pattern match against those types and pass the string to shell local func.
@@ -1309,7 +1332,7 @@ local_func(lr, [], Bs, _Shell, _RT, FT, _Lf, _Ef) ->
 %% In theory, you may want to be able to load a module in to local table
 %% edit them, and then save it back to the file system.
 %% You may also want to be able to save a test module.
-local_func(save_module, [{string,_,PathToFile}], Bs, _Shell, _RT, FT, _Lf, _Ef) ->
+local_func(save_module, [{string,_,PathToFile}], Bs, _Shell, RT, FT, _Lf, _Ef) ->
     [_Path, FileName] = string:split("/"++PathToFile, "/", trailing),
     [Module, _] = string:split(FileName, ".", leading),
     Module1 = io_lib:fwrite("~tw",[list_to_atom(Module)]),
@@ -1317,8 +1340,8 @@ local_func(save_module, [{string,_,PathToFile}], Bs, _Shell, _RT, FT, _Lf, _Ef) 
     Output = (
         "-module("++Module1++").\n\n" ++
         "-export(["++lists:join(",",Exports)++"]).\n\n"++
-        local_types(FT) ++
-        local_records(FT) ++
+        local_types(FT) ++ "\n" ++
+        all_records(RT) ++
         local_functions(FT)
     ),
     Ret = case filelib:is_file(PathToFile) of
@@ -1541,12 +1564,13 @@ local_functions(Keys, FT) ->
         end || {F, A} <- Keys]).
 %% Output local types
 local_types(FT) ->
-    lists:join($\n,
+    lists:join("\n\n",
         [TypeDef||{{type_def, _},TypeDef} <- ets:tab2list(FT)]).
 %% Output local records
 local_records(FT) ->
-    lists:join($\n,
-        [RecDef||{{record_def, _},RecDef} <- ets:tab2list(FT)]).
+        [list_to_binary(RecDef)||{{record_def, _},RecDef} <- ets:tab2list(FT)].
+all_records(RT) ->
+        [list_to_binary(erl_pp:attribute(RecDef) ++ "\n")||{ _,RecDef} <- ets:tab2list(RT)].
 write_and_compile_module(PathToFile, Output) ->
     case file:write_file(PathToFile, unicode:characters_to_binary(Output)) of
         ok -> c:c(PathToFile);
