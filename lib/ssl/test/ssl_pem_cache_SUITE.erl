@@ -69,8 +69,11 @@
          alternative_path_noabspath/1,
          alternative_path_symlink_relative/0,
          alternative_path_symlink_relative/1,
-         check_cert/3
+         cache_file_does_not_exist/0,
+         cache_file_does_not_exist/1
         ]).
+
+-export([check_cert/3]).
 
 -define(CLEANUP_INTERVAL, 5000).
 -define(BIG_CLEANUP_INTERVAL, 600000).
@@ -93,7 +96,8 @@ all() ->
      alternative_path_noabspath,
      alternative_path_hardlink,
      alternative_path_symlink,
-     alternative_path_symlink_relative].
+     alternative_path_symlink_relative,
+     cache_file_does_not_exist].
 
 groups() -> [].
 
@@ -431,6 +435,18 @@ alternative_path_symlink_relative(Config) when is_list(Config) ->
                  disconnected => [8, 0, 0, 0]},
     alternative_path_helper(Config, fun make_symlink_noabspath/1, Expected).
 
+cache_file_does_not_exist() ->
+    [{doc, "White box test, that a none existing file will provide an empty content. "
+      "This will have the effect that the ssl manager process "
+      "will not crash but previous content will be invalidated."}].
+
+cache_file_does_not_exist(Config) when is_list(Config)->
+    PrivDir = proplists:get_value(priv_dir, Config),
+    Id = ets:new(dummy_test, []),
+    NonExistingFile = filename:join(PrivDir, "foo.pem"),
+    [] = ssl_certificate:file_to_certificats(NonExistingFile, Id),
+    [] = ssl_certificate:file_to_crls(NonExistingFile, Id).
+
 %%--------------------------------------------------------------------
 %% Internal functions
 %%--------------------------------------------------------------------
@@ -524,9 +540,14 @@ new_root_pem_helper(Config, CleanMode,
             ClientConf = [{cacertfile, TransformedPath} | proplists:delete(cacertfile, ClientConf0)],
             {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
             Init = get_table_sizes(),
-            {Client0, Server0} =
-                make_connection_check_cert(ServerRootCert0, ClientNode, ClientConf,
-                                           ServerNode, ServerConf, Hostname, ServerCAFile),
+            Server =
+                ssl_test_lib:start_server([{node, ServerNode}, {port, 0},
+                                           {from, self()},
+                                           {mfa, {ssl_test_lib, no_result, []}},
+                                           {options, ServerConf}]),
+            Port = ssl_test_lib:inet_port(Server),
+            Client0 = make_connection_existing_server_check_cert(ClientNode, ClientConf,
+                                                                 ServerRootCert0, ServerCAFile, Hostname, Port),
             Connected1 = get_table_sizes(),
             [{pem_cache, PemCacheData0}, {cert, CertData0},
              {ca_ref_cnt, CaRefCntData0}, {ca_file_ref, CaFileRefData0}] = get_tables(),
@@ -547,19 +568,21 @@ new_root_pem_helper(Config, CleanMode,
 
             [{pem_cache, PemCacheData1}, {cert, CertData1},
              {ca_ref_cnt, CaRefCntData1}, {ca_file_ref, _}] = get_tables(),
-            {Client1, Server1} = case CleanMode of
-                                     no_cleanup ->
-                                         check_tables([{pem_cache, PemCacheData0},
-                                                       {cert, CertData0},
-                                                       {ca_ref_cnt, CaRefCntData0},
-                                                       {ca_file_ref, CaFileRefData0}]),
-                                         make_connection_check_cert(ServerRootCert0, ClientNode, ClientConf,
-                                                                    ServerNode, ServerConf, Hostname, ServerCAFile0);
-                                     _ ->
-                                         false = (CertData1 == CertData0),
-                                         make_connection_check_cert(ServerRootCert, ClientNode, ClientConf,
-                                                                    ServerNode, ServerConf, Hostname, ServerCAFile)
-                                 end,
+            Client1 = case CleanMode of
+                          no_cleanup ->
+                              check_tables([{pem_cache, PemCacheData0},
+                                            {cert, CertData0},
+                                            {ca_ref_cnt, CaRefCntData0},
+                                            {ca_file_ref, CaFileRefData0}]),
+                              Server ! listen,
+                              make_connection_existing_server_check_cert(ClientNode, ClientConf,
+                                                                         ServerRootCert0, ServerCAFile0, Hostname, Port);
+                          _ ->
+                              false = (CertData1 == CertData0),
+                              Server ! listen,
+                              make_connection_existing_server_check_cert(ClientNode, ClientConf,
+                                                                         ServerRootCert, ServerCAFile, Hostname, Port)
+                      end,
             
             4 = get_total_number_of_references(),
             Connected2 = get_table_sizes(),
@@ -576,7 +599,7 @@ new_root_pem_helper(Config, CleanMode,
             end,
             true = (CaRefCntData2 /= CaRefCntData1),
 
-            [ssl_test_lib:close(A) || A <- [Client1, Server1]],
+            [ssl_test_lib:close(A) || A <- [Client1]],
             2 = get_total_number_of_references(),
             Disconnected1 = get_table_sizes(),
 
@@ -588,7 +611,7 @@ new_root_pem_helper(Config, CleanMode,
             end,
             check_tables([{cert, CertData1}, {ca_ref_cnt, CaRefCntData0},
                           {ca_file_ref, CaFileRefData0}]),
-            [ssl_test_lib:close(A) || A <- [Client0, Server0]],
+            [ssl_test_lib:close(A) || A <- [Client0, Server]],
             0 = get_total_number_of_references(),
             Disconnected2 = get_table_sizes(),
             case CleanMode of
@@ -670,24 +693,16 @@ alternative_path_helper(Config, GetAlternative,
             {skip, Reason}
     end.
 
-make_connection_check_cert(ServerRootCert, ClientNode, ClientConf, ServerNode,
-                           ServerConf, Hostname, ServerCAFile) ->
-    Server =
-	ssl_test_lib:start_server([{node, ServerNode}, {port, 0},
-				   {from, self()},
-				   {mfa, {ssl_test_lib, no_result, []}},
-				   {options, ServerConf}]),
-    Port = ssl_test_lib:inet_port(Server),
-    Client =
-	ssl_test_lib:start_client([{node, ClientNode},
-                                   {port, Port}, {host, Hostname},
-				   {from, self()},
-				   {mfa, {?MODULE, check_cert,
-                                          [ServerRootCert, ServerCAFile]}},
-                                   {options, [{verify, verify_peer} | ClientConf]}]),
 
+make_connection_existing_server_check_cert(ClientNode, ClientConf, ServerRootCert, ServerCAFile, Hostname, Port) ->
+    Client = ssl_test_lib:start_client([{node, ClientNode},
+                                        {port, Port}, {host, Hostname},
+                                        {from, self()},
+                                        {mfa, {?MODULE, check_cert,
+                                               [ServerRootCert, ServerCAFile]}},
+                                        {options, [{verify, verify_peer} | ClientConf]}]),
     ssl_test_lib:check_result(Client, ok),
-    {Client, Server}.
+    Client.
 
 create_initial_config(Config) ->
     PrivDir = proplists:get_value(priv_dir, Config),
