@@ -106,14 +106,14 @@ jobs:
         with:
           filters: .github/scripts/c-code-path-filters.yaml
       - name: Cache pre-built src
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # ratchet:actions/cache@v4.2.3
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
         with:
             path: otp_src.tar.gz
             key: prebuilt-src-${{ github.ref_name }}-${{ github.sha }}
             restore-keys: |
                 prebuilt-src-${{ github.base_ref }}-${{ github.event.pull_request.base.sha }}
       - name: Cache pre-built binaries
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # ratchet:actions/cache@v4.2.3
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
         with:
             path: otp_cache.tar.gz
             key: prebuilt-cache-64-bit-${{ github.ref_name }}-${{ github.sha }}
@@ -194,7 +194,7 @@ jobs:
     needs: pack
     if: needs.pack.outputs.build-c-code == 'true'
     env:
-      WXWIDGETS_VERSION: 3.2.6
+      WXWIDGETS_VERSION: 3.2.8.1
       MACOS_VERSION: 15
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # ratchet:actions/checkout@v4.2.2
@@ -206,7 +206,7 @@ jobs:
 
       - name: Cache wxWidgets
         id: wxwidgets-cache
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # ratchet:actions/cache@v4.2.3
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
         with:
           path: wxWidgets
           key: wxWidgets-${{ env.WXWIDGETS_VERSION }}-${{ runner.os }}-${{ hashFiles('.github/scripts/build-macos-wxwidgets.sh') }}-${{ env.MACOS_VERSION }}
@@ -297,7 +297,7 @@ jobs:
           IF EXIST "c:\\Program Files\\OpenSSL-Win64" (move "c:\\Program Files\\OpenSSL-Win64" "c:\\OpenSSL-Win64") ELSE (move "c:\\Program Files\\OpenSSL" "c:\\OpenSSL-Win64")
 
       - name: Cache wxWidgets
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # ratchet:actions/cache@v4.2.3
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
         with:
           path: wxWidgets
           key: wxWidgets-${{ env.WXWIDGETS_VERSION }}-${{ runner.os }}
@@ -455,6 +455,41 @@ jobs:
             for OPTION in "${OPTIONS[@]}"; do
                 docker run otp "erl ${OPTION} -noshell -s init stop"
             done
+
+  modified-vendor-files:
+    name: Check if vendor files changed
+    runs-on: ubuntu-latest
+    # this condition is necessary because github.base_ref only exists for pull_requests
+    if: ${{ github.event_name == 'pull_request' }}
+    outputs:
+      vendor-files: ${{ steps.vendor-files.outputs.MODIFIED_FILES != '0' }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # ratchet:actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0
+      - name: Get modified vendor files
+        id: vendor-files
+        run: |
+          echo "MODIFIED_FILES=$(git diff --name-only origin/${{ github.base_ref }} HEAD | grep 'vendor\.info$' | wc -l || 1)" >> $GITHUB_OUTPUT
+
+  # this is a call to a workflow_call
+  pr-vendor-vulnerability-analysis:
+    needs: modified-vendor-files
+    if: ${{ needs.modified-vendor-files.outputs.vendor-files == 'true' && github.event_name == 'pull_request' && github.repository == 'erlang/otp'}}
+    permissions:
+      actions: read
+    name: Vendor Vulnerability Scanning
+    uses: ./.github/workflows/reusable-vendor-vulnerability-scanner.yml
+    with:
+      fail_if_cve: false
+      checkout: true
+      version: ${{ github.event_name == 'pull_request' && github.base_ref || github.ref_name }}
+      # equivalent of ${{ env.BASE_BRANCH }} but reusable-workflows do not allow to pass env.
+      # `fail_if_cve` must always be `false`. the reason is that the reusable workflow tries to open
+      # a GH Issue if it finds a vulnerability. however, this can only work on internal PRs or PRs coming
+      # from a repo branch. this is a security limitation as otherwise, forked repos could create pull
+      # requests against Erlang/OTP which start creating automatic issues.
+    secrets: inherit
 
   build:
     name: Build Erlang/OTP
@@ -771,7 +806,7 @@ jobs:
           docker build -t otp - <<EOF
           FROM otp
           RUN echo 'export PATH="\$HOME/.local/bin:\$PATH"' >> /home/otptest/.profile
-          RUN sudo apt-get install -y pip && \
+          RUN sudo apt-get install -y libicu-dev pip && \
               pip install click==8.1.7 scancode-toolkit==${SCANCODE_VERSION} reuse && \
               pip install -U ntia-conformance-checker
           EOF
@@ -878,18 +913,17 @@ jobs:
             fail-on: ${{ github.ref_type == 'tag' && '' || 'violations,issues' }}
             sw-version: ${{ env.OTP_SBOM_VERSION }}
 
-  vendor-analysis:
-    name: Vendor Dependency Analysis
+  vendor-dependency-upload:
+    name: Vendor Dependency Upload
     runs-on: ubuntu-latest
-    if: github.event_name == 'push'
     needs:
         - sbom
         - pack
+    if: github.repository == 'erlang/otp'
     ## Needed to use Github Dependency API
     permissions:
       contents: write
       id-token: write
-
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # ratchet:actions/checkout@v4.2.2
       - uses: ./.github/actions/build-base-image
@@ -908,7 +942,13 @@ jobs:
               --sbom-file /github/bom.spdx.json"
 
       # allows Dependabot to give us alert of the vendor libraries that use semantic versioning
+      # it also allows dependencies to be looked up from github dependencies
+      #
+      # trigger the upload only on merged pull requests
+      #
+      #
       - name: Upload SBOM to Github Dependency API
+        if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true
         uses: advanced-security/spdx-dependency-submission-action@5530bab9ee4bbe66420ce8280624036c77f89746 # ratchet:advanced-security/spdx-dependency-submission-action@v0.1.1
 
   ## If this is an "OTP-*" tag that has been pushed we do some release work

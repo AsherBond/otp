@@ -1742,7 +1742,14 @@ crypto_one_time(Cipher, Key, IV, Data, FlagOrOptions) ->
               {}).
 
 %%%----------------------------------------------------------------
--doc(#{equiv => crypto_one_time_aead/7}).
+-doc """
+Do a complete encrypt with an AEAD cipher of the full text
+with the default tag length.
+
+Equivalent to
+`crypto_one_time_aead(Cipher, Key, IV, InText, AAD, TagLength, true)`
+where `TagLength` is the default tag length for the given `Cipher`.
+""".
 -doc(#{group => <<"Cipher API">>,
        since => <<"OTP 22.0">>}).
 -spec crypto_one_time_aead(Cipher, Key, IV, InText, AAD, EncFlag::true) ->
@@ -1771,6 +1778,13 @@ length is wanted, the `crypto_one_time_aead/6` form may be used.
 
 For decryption, set the `EncryptFlag` to `false` and put the tag to be checked
 in the argument `TagOrTagLength`.
+
+> #### Warning {: .warning }
+>
+> The length of the tag at decryption is not checked by the function. It is the
+> caller's responsibility to ensure that the length of the tag matches the
+> length of the tag used when the data was encrypted. Otherwise the decryption
+> may succeed if the given tag only matches the start of the proper tag.
 
 Additional Authentication Data (AAD) is plaintext data that will not be
 encrypted, but will be covered by authenticity protection. It should be provided
@@ -2793,10 +2807,10 @@ pkey_crypt_nif(_Algorithm, _In, _Key, _Options, _IsPrivate, _IsEncrypt) -> ?nif_
        since => <<"OTP R16B01">>}).
 -spec generate_key(Type, Params)
                  -> {PublicKey, PrivKeyOut}
-                        when Type :: dh | ecdh | eddh | eddsa | rsa | srp,
+                        when Type :: dh | ecdh | eddh | eddsa | rsa | mldsa() | mlkem512 | mlkem768 | mlkem1024| srp,
                              PublicKey :: dh_public() | ecdh_public() | rsa_public() | srp_public(),
                              PrivKeyOut :: dh_private() | ecdh_private() | rsa_private() | {srp_public(),srp_private()},
-                             Params :: dh_params() | ecdh_params() | eddsa_params() | rsa_params() | srp_gen_params()
+                             Params :: dh_params() | ecdh_params() | eddsa_params() | rsa_params() | srp_gen_params() | []
                                        .
 generate_key(Type, Params) ->
     generate_key(Type, Params, undefined).
@@ -2825,11 +2839,11 @@ Uses the [3-tuple style](`m:crypto#error_3tup`) for error handling.
        since => <<"OTP R16B01">>}).
 -spec generate_key(Type, Params, PrivKeyIn)
                  -> {PublicKey, PrivKeyOut}
-                        when Type :: dh | ecdh | eddh | eddsa | rsa | srp,
+                        when Type :: dh | ecdh | eddh | eddsa | rsa | mldsa() | mlkem512 | mlkem768 | mlkem1024 | srp,
                              PublicKey :: dh_public() | ecdh_public() | rsa_public() | srp_public(),
                              PrivKeyIn :: undefined | dh_private() | ecdh_private() | rsa_private() | {srp_public(),srp_private()},
                              PrivKeyOut :: dh_private() | ecdh_private() | rsa_private() | {srp_public(),srp_private()},
-                             Params :: dh_params() | ecdh_params() | eddsa_params() | rsa_params() | srp_comp_params()
+                             Params :: dh_params() | ecdh_params() | eddsa_params() | rsa_params() | srp_comp_params() | []
                                        .
 
 generate_key(dh, DHParameters0, PrivateKey) ->
@@ -2918,7 +2932,7 @@ Supported encapsulation methods can be obtained with
 [`supports(kems)`](`supports/1`).
 """.
 -doc(#{group => ~b"Key API",
-       since => ~b"OTP @OTP-19657@"}).
+       since => ~b"OTP 28.1"}).
 -spec encapsulate_key(Type, OthersPublicKey) -> {Secret, EncapSecret}
               when Type :: kem(),
                    OthersPublicKey :: binary(),
@@ -2939,7 +2953,7 @@ Supported encapsulation methods can be obtained with
 [`supports(kems)`](`supports/1`).
 """.
 -doc(#{group => ~b"Key API",
-       since => ~b"OTP @OTP-19657@"}).
+       since => ~b"OTP 28.1"}).
 -spec decapsulate_key(Type, MyPrivKey, EncapSecret) -> Secret
               when Type :: kem(),
                    MyPrivKey :: binary(),

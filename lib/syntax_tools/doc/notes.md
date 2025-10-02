@@ -23,6 +23,17 @@ limitations under the License.
 
 This document describes the changes made to the Syntax_Tools application.
 
+## Syntax_Tools 4.0.1
+
+### Fixed Bugs and Malfunctions
+
+- Fixed zip generator crash in `annotate_bindings/1`
+
+  Own Id: OTP-19731 Aux Id: [GH-10102], [PR-10104]
+
+[GH-10102]: https://github.com/erlang/otp/issues/10102
+[PR-10104]: https://github.com/erlang/otp/pull/10104
+
 ## Syntax_Tools 4.0
 
 ### Fixed Bugs and Malfunctions
@@ -90,6 +101,17 @@ This document describes the changes made to the Syntax_Tools application.
 [PR-9402]: https://github.com/erlang/otp/pull/9402
 [PR-9819]: https://github.com/erlang/otp/pull/9819
 [PR-9670]: https://github.com/erlang/otp/pull/9670
+
+## Syntax_Tools 3.2.2.1
+
+### Fixed Bugs and Malfunctions
+
+- Backport fix for annotating maybe to OTP-27
+
+  Own Id: OTP-19740 Aux Id: [GH-10103], [PR-10118]
+
+[GH-10103]: https://github.com/erlang/otp/issues/10103
+[PR-10118]: https://github.com/erlang/otp/pull/10118
 
 ## Syntax_Tools 3.2.2
 

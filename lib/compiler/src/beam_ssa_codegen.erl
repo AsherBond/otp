@@ -1159,7 +1159,15 @@ def_regs_is([#cg_set{op=catch_end,dst=Dst,args=[#b_var{}=Tag|_]}=I|Is], Regs, De
     Def2 = kill_regs(Def1, [Dst,Tag], Regs),
     Def = ordsets:add_element(Dst, Def2),
     def_regs_is(Is, Regs, Def, [I|Acc]);
-def_regs_is([#cg_set{anno=Anno0,op=debug_line}=I0|Is], Regs, Def, Acc) ->
+def_regs_is([#cg_set{anno=Anno0,op=debug_line}=I0|Is], Regs, Def0, Acc) ->
+    Alias = map_get(alias, Anno0),
+    %% Handle shadowing of variables. When a variable is defined both
+    %% directly and indirectly through aliases, use the indirect one
+    %% because it is presumably the most recent definition.
+    Vs = [#b_var{name=V} || _ := Vs <- Alias,
+                            V <- Vs,
+                            is_original_variable(V)],
+    Def = Def0 -- Vs,
     Anno = Anno0#{def_regs => Def},
     I = I0#cg_set{anno=Anno},
     def_regs_is(Is, Regs, Def, [I|Acc]);
@@ -1458,6 +1466,27 @@ cg_block([#cg_set{op=bs_create_bin,dst=Dst0,args=Args0,anno=Anno}=I,
                end,
     Is = [Line,{bs_create_bin,Fail,Alloc,Live,Unit,Dst,{list,Args}}],
     {Is++TypeInfo,St};
+cg_block([#cg_set{op=bs_create_bin,
+                  anno=#{append_string_to_writable := true}=Anno,
+                  dst=Dst0,args=Args0}=I|Is0],
+         Context, St0) ->
+    %% This instruction originates from a literal patched by the
+    %% beam_ssa_destructive_update pass.
+    {Is1,St} = cg_block(Is0, Context, St0),
+    Args1 = typed_args(Args0, Anno, St0),
+    Fail = {f,0},
+    Line = line(Anno),
+    Alloc = map_get(alloc, Anno),
+    Live = get_live(I),
+    Dst = beam_arg(Dst0, St0),
+    Args = bs_args(Args1),
+    Unit = 256,
+    TypeInfo = [{'%',{var_info,Dst,
+                      [{type,#t_bitstring{size_unit=Unit,
+                                          appendable=true}}]}}],
+    Is2 = [Line,{bs_create_bin,Fail,Alloc,Live,Unit,Dst,{list,Args}}],
+    Is = Is2 ++ TypeInfo ++ Is1,
+    {Is,St};
 cg_block([#cg_set{op=bs_start_match,
                   dst=Ctx0,
                   args=[#b_literal{val=new},Bin0]}=I,
