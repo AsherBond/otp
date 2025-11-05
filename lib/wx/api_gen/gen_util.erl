@@ -230,13 +230,15 @@ erl_copyright() ->
 erl_wx_copyright() ->
     erl_copyright_template("Apache-2.0 AND LicenseRef-scancode-wxwindows-free-doc-3").
 
+%% REUSE-IgnoreStart
+
 erl_copyright_template(License) ->
     StartYear = start_year(get(current_class)),
     {CurrentYear,_,_}   = erlang:date(),
     w("%%~n",[]),
     w("%% %CopyrightBegin%~n",[]),
     w("%%~n",[]),
-    w("%% SPDX-License-Identifier: ~n",[License]),
+    w("%% SPDX-License-Identifier: ~ts~n",[License]),
     w("%%~n",[]),
     w("%% Copyright Ericsson AB ~p-~p. All Rights Reserved.~n",
       [StartYear, CurrentYear]),
@@ -255,6 +257,8 @@ erl_copyright_template(License) ->
     w("%%~n",[]),
     append_license(License),
     w("%% %CopyrightEnd%~n",[]).
+
+%% REUSE-IgnoreEnd
 
 append_license("Apache-2.0 AND LicenseRef-scancode-wxwindows-free-doc-3") ->
     w("%% For documentation, wxWindow Free Documentation License, Version 3 applies.~n",[]),
@@ -295,12 +299,13 @@ append_license("Apache-2.0 AND LicenseRef-scancode-wxwindows-free-doc-3") ->
 append_license(_) ->
     ok.
 
+%% REUSE-IgnoreStart
 
 c_copyright() ->
     {CurrentYear,_,_}   = erlang:date(),
     w("/*~n",[]),
-    w(" * %CopyrightBegin%
-    w(" *
+    w(" * %CopyrightBegin%~n",[]),
+    w(" *~n",[]),
     w(" * SPDX-License-Identifier: Apache-2.0~n",[]),
     w(" *~n",[]),
     w(" * Copyright Ericsson AB 2008-~p. All Rights Reserved.~n",[CurrentYear]),
@@ -319,6 +324,8 @@ c_copyright() ->
     w(" *~n",[]),
     w(" * %CopyrightEnd%~n",[]),
     w("*/~n",[]).
+
+%% REUSE-IgnoreEnd
 
 start_year("wxAuiManagerEvent") -> 2009;
 start_year("wxAuiNotebookEvent") -> 2009;
