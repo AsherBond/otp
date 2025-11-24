@@ -41,6 +41,13 @@
 -define(INET_TYPE_DGRAM,      2).
 -define(INET_TYPE_SEQPACKET,  3).
 
+%% protocols
+-define(INET_PROTO_DEFAULT,   0).
+-define(INET_PROTO_TCP,       1).
+-define(INET_PROTO_UDP,       2).
+-define(INET_PROTO_SCTP,      3).
+-define(INET_PROTO_MPTCP,     4).
+
 %% socket modes, INET_LOPT_MODE
 -define(INET_MODE_LIST,	      0).
 -define(INET_MODE_BINARY,     1).
@@ -170,8 +177,13 @@
 -define(INET_OPT_RECVTTL,         47).
 -define(TCP_OPT_NOPUSH,           48).
 -define(INET_LOPT_TCP_READ_AHEAD, 49).
--define(INET_OPT_NON_BLOCK_SEND,  50).
+-define(INET_LOPT_NON_BLOCK_SEND, 50).
+-define(TCP_OPT_KEEPCNT,          51).
+-define(TCP_OPT_KEEPIDLE,         52).
+-define(TCP_OPT_KEEPINTVL,        53).
+-define(TCP_OPT_USER_TIMEOUT,     54).
 -define(INET_OPT_DEBUG,           99).
+
 % Specific SCTP options: separate range:
 -define(SCTP_OPT_RTOINFO,	 	100).
 -define(SCTP_OPT_ASSOCINFO,	 	101).
@@ -415,22 +427,24 @@
 %% deliver = term
 %% active  = false
 %%
--record(connect_opts, 
-	{ 
+-record(connect_opts,
+	{
 	  ifaddr,           %% don't bind explicitly, let connect decide
 	  port   = 0,       %% bind to port (default is dynamic port)
 	  fd     = -1,      %% fd >= 0 => already bound
-	  opts   = []       %% [{active,true}] added in inet:connect_options
+	  opts   = [],      %% [{active,true}] added in inet:connect_options
+          protocol = undefined
 	 }).
 
--record(listen_opts, 
-	{ 
+-record(listen_opts,
+	{
 	  ifaddr,                    %% interpreted as 'any' in *_tcp.erl
 	  port   = 0,                %% bind to port (default is dynamic port)
 	  backlog = ?LISTEN_BACKLOG, %% backlog
 	  fd      = -1,              %% %% fd >= 0 => already bound
-	  opts   = []                %% [{active,true}] added in 
+	  opts   = [],               %% [{active,true}] added in
 	                             %% inet:listen_options
+          protocol = undefined
 	 }).
 
 -record(udp_opts,

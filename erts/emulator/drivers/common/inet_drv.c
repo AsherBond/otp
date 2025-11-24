@@ -767,6 +767,13 @@ static size_t my_strnlen(const char *s, size_t maxlen)
 #define INET_TYPE_DGRAM     2
 #define INET_TYPE_SEQPACKET 3
 
+/* open protocol */
+#define INET_PROTO_DEFAULT  0
+#define INET_PROTO_TCP      1
+#define INET_PROTO_UDP      2
+#define INET_PROTO_SCTP     3
+#define INET_PROTO_MPTCP    4
+
 /* INET_LOPT_MODE options */
 #define INET_MODE_LIST      0
 #define INET_MODE_BINARY    1
@@ -916,6 +923,10 @@ static size_t my_strnlen(const char *s, size_t maxlen)
 #define TCP_OPT_NOPUSH              48  /* super-Nagle, aka TCP_CORK */
 #define INET_LOPT_TCP_READ_AHEAD    49  /* Read ahead of packet data */
 #define INET_LOPT_NON_BLOCK_SEND    50  /* Non-blocking send, only SCTP */
+#define TCP_OPT_KEEPCNT             51  /* TCP_KEEPCNTK */
+#define TCP_OPT_KEEPIDLE            52  /* TCP_KEEPIDLE */
+#define TCP_OPT_KEEPINTVL           53  /* TCP_KEEPINTVL */
+#define TCP_OPT_USER_TIMEOUT        54  /* TCP_USER_TIMEOUT */
 #define INET_LOPT_DEBUG             99  /* Enable/disable DEBUG for a socket */
 
 /* SCTP options: a separate range, from 100: */
@@ -1611,6 +1622,7 @@ static ErlDrvTermData am_sendfile;
 #endif
 
 static char str_eafnosupport[] = "eafnosupport";
+static char str_eprotonosupport[] = "eprotonosupport";
 static char str_einval[] = "einval";
 
 /* special errors for bad ports and sequences */
@@ -5078,11 +5090,12 @@ static int erl_inet_close(inet_descriptor* desc)
     return 0;
 }
 
-static ErlDrvSSizeT inet_ctl_open(inet_descriptor* desc, int domain, int type,
-				  char** rbuf, ErlDrvSizeT rsize)
+static
+ErlDrvSSizeT inet_ctl_open(inet_descriptor* desc,
+                           int domain, int type, int protocol,
+                           char** rbuf, ErlDrvSizeT rsize)
 {
     int save_errno;
-    int protocol;
 #ifdef HAVE_SETNS
     int current_ns, new_ns;
     current_ns = new_ns = 0;
@@ -5125,7 +5138,6 @@ static ErlDrvSSizeT inet_ctl_open(inet_descriptor* desc, int domain, int type,
 	}
     }
 #endif
-    protocol = desc->sprotocol;
 #ifdef HAVE_SYS_UN_H
     if (domain == AF_UNIX) protocol = 0;
 #endif
@@ -7485,6 +7497,50 @@ static int inet_set_opts(inet_descriptor* desc, char* ptr, int len)
 	    continue;
 #endif
 
+#if defined(TCP_KEEPCNT)
+	case TCP_OPT_KEEPCNT:
+            DDBG(desc,
+                 ("INET-DRV-DBG[%d][" SOCKET_FSTR ",%T] "
+                  "inet_set_opts(keepcnt) -> %d\r\n",
+                  __LINE__, desc->s, driver_caller(desc->port), ival) );
+	    proto = IPPROTO_TCP;
+	    type = TCP_KEEPCNT;
+	    break;
+#endif
+
+#if defined(TCP_KEEPIDLE)
+	case TCP_OPT_KEEPIDLE:
+            DDBG(desc,
+                 ("INET-DRV-DBG[%d][" SOCKET_FSTR ",%T] "
+                  "inet_set_opts(keepidle) -> %d\r\n",
+                  __LINE__, desc->s, driver_caller(desc->port), ival) );
+	    proto = IPPROTO_TCP;
+	    type = TCP_KEEPIDLE;
+	    break;
+#endif
+
+#if defined(TCP_KEEPINTVL)
+	case TCP_OPT_KEEPINTVL:
+            DDBG(desc,
+                 ("INET-DRV-DBG[%d][" SOCKET_FSTR ",%T] "
+                  "inet_set_opts(keepintvl) -> %d\r\n",
+                  __LINE__, desc->s, driver_caller(desc->port), ival) );
+	    proto = IPPROTO_TCP;
+	    type = TCP_KEEPINTVL;
+	    break;
+#endif
+
+#if defined(TCP_USER_TIMEOUT)
+	case TCP_OPT_USER_TIMEOUT:
+            DDBG(desc,
+                 ("INET-DRV-DBG[%d][" SOCKET_FSTR ",%T] "
+                  "inet_set_opts(user_timeout) -> %d\r\n",
+                  __LINE__, desc->s, driver_caller(desc->port), ival) );
+	    proto = IPPROTO_TCP;
+	    type = TCP_USER_TIMEOUT;
+	    break;
+#endif
+
 #if defined(HAVE_MULTICAST_SUPPORT) && defined(IPPROTO_IP)
 
 	case UDP_OPT_MULTICAST_TTL:
@@ -8831,7 +8887,12 @@ static int sctp_set_opts(inet_descriptor* desc, char* ptr, int len)
 	    proto   = IPPROTO_SCTP;
 	    type    = SCTP_EVENTS;
 	    arg_ptr = (char*) (&arg.es);
+#if defined(__linux__)
+            arg_sz  = offsetof(struct sctp_event_subscribe,
+                               sctp_adaptation_layer_event) + 1;
+#else
 	    arg_sz  = sizeof  ( arg.es);
+#endif
 	    break;
 	}
 	/* The following is not available on
@@ -9371,6 +9432,30 @@ static ErlDrvSSizeT inet_fill_opts(inet_descriptor* desc,
 	    *ptr++ = opt;
 	    put_int32(0, ptr);
 	    continue;
+#endif
+#if defined(TCP_KEEPCNT)
+	case TCP_OPT_KEEPCNT:
+	    proto = IPPROTO_TCP;
+	    type = TCP_KEEPCNT;
+	    break;
+#endif
+#if defined(TCP_KEEPIDLE)
+	case TCP_OPT_KEEPIDLE:
+	    proto = IPPROTO_TCP;
+	    type = TCP_KEEPIDLE;
+	    break;
+#endif
+#if defined(TCP_KEEPINTVL)
+	case TCP_OPT_KEEPINTVL:
+	    proto = IPPROTO_TCP;
+	    type = TCP_KEEPINTVL;
+	    break;
+#endif
+#if defined(TCP_USER_TIMEOUT)
+	case TCP_OPT_USER_TIMEOUT:
+	    proto = IPPROTO_TCP;
+	    type = TCP_USER_TIMEOUT;
+	    break;
 #endif
 
 #if defined(HAVE_MULTICAST_SUPPORT) && defined(IPPROTO_IP)
@@ -11843,13 +11928,13 @@ static ErlDrvSSizeT tcp_inet_ctl(ErlDrvData e, unsigned int cmd,
     switch(cmd) {
 
     case INET_REQ_OPEN: { /* open socket and return internal index */
-	int domain;
+	int domain, protocol;
 
 	DDBG(INETP(desc),
 	     ("INET-DRV-DBG[%d][%T] tcp_inet_ctl -> OPEN\r\n",
 	      __LINE__, driver_caller(desc->inet.port)) );
 
-	if (len != 2) return ctl_error(EINVAL, rbuf, rsize);
+	if (len != 3) return ctl_error(EINVAL, rbuf, rsize);
 	switch(buf[0]) {
 	case INET_AF_INET:
 	    domain = AF_INET;
@@ -11868,7 +11953,18 @@ static ErlDrvSSizeT tcp_inet_ctl(ErlDrvData e, unsigned int cmd,
 	    return ctl_xerror(str_eafnosupport, rbuf, rsize);
 	}
 	if (buf[1] != INET_TYPE_STREAM) return ctl_error(EINVAL, rbuf, rsize);
-	return inet_ctl_open(INETP(desc), domain, SOCK_STREAM, rbuf, rsize);
+        switch(buf[2]) {
+        case INET_PROTO_DEFAULT: protocol = 0; break;
+        case INET_PROTO_TCP: protocol = IPPROTO_TCP; break;
+#ifdef IPPROTO_MPTCP
+        case INET_PROTO_MPTCP: protocol = IPPROTO_MPTCP; break;
+#endif
+        default:
+            return ctl_xerror(str_eprotonosupport, rbuf, rsize);
+        }
+	return
+            inet_ctl_open(INETP(desc),
+                          domain, SOCK_STREAM, protocol, rbuf, rsize);
 	break;
     }
 
@@ -13503,7 +13599,7 @@ static int tcp_send_error(tcp_descriptor* desc, int err)
      * show_econnreset socket option enabled to receive {error, econnreset} on
      * both send and recv operations to indicate that an RST has been received.
      */
-#ifdef __WIN_32__
+#ifdef __WIN32__
     if (err == ECONNABORTED)
 	err = ECONNRESET;
 #endif
@@ -14360,8 +14456,9 @@ static ErlDrvSSizeT packet_inet_ctl(ErlDrvData e, unsigned int cmd, char* buf,
     ErlDrvSSizeT replen;
     udp_descriptor * udesc = (udp_descriptor *) e;
     inet_descriptor* desc  = INETP(udesc);
-    int type = SOCK_DGRAM;
     int af = AF_INET;
+    int type = SOCK_DGRAM;
+    int protocol;
 
     cmd -= ERTS_INET_DRV_CONTROL_MAGIC_NUMBER;
 
@@ -14370,7 +14467,7 @@ static ErlDrvSSizeT packet_inet_ctl(ErlDrvData e, unsigned int cmd, char* buf,
 	DDBG(desc,
 	     ("INET-DRV-DBG[%d][%T] packet_inet_ctl -> OPEN\r\n",
 	      __LINE__, driver_caller(desc->port)) );
-	if (len != 2) {
+	if (len != 3) {
 	    return ctl_error(EINVAL, rbuf, rsize);
 	}
 
@@ -14396,7 +14493,15 @@ static ErlDrvSSizeT packet_inet_ctl(ErlDrvData e, unsigned int cmd, char* buf,
 	    return ctl_error(EINVAL, rbuf, rsize);
 	}
 
-	replen = inet_ctl_open(desc, af, type, rbuf, rsize);
+        switch(buf[2]) {
+        case INET_PROTO_DEFAULT: protocol = 0; break;
+        case INET_PROTO_UDP: protocol = IPPROTO_UDP; break;
+        case INET_PROTO_SCTP: protocol = IPPROTO_SCTP; break;
+        default:
+            return ctl_xerror(str_eprotonosupport, rbuf, rsize);
+        }
+
+	replen = inet_ctl_open(desc, af, type, protocol, rbuf, rsize);
 
 	if ((*rbuf)[0] != INET_REP_ERROR) {
 	    if (desc->active)

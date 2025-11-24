@@ -274,6 +274,9 @@ way, option `send_timeout` comes in handy.
         {high_msgq_watermark, pos_integer()} |
         {high_watermark,  non_neg_integer()} |
         {keepalive,       boolean()} |
+        {keepcnt,         integer()} |
+        {keepidle,        integer()} |
+        {keepintvl,       integer()} |
         {linger,          {boolean(), non_neg_integer()}} |
         {low_msgq_watermark, pos_integer()} |
         {low_watermark,   non_neg_integer()} |
@@ -302,6 +305,7 @@ way, option `send_timeout` comes in handy.
 	{recvtos,         boolean()} |
 	{recvtclass,      boolean()} |
 	{recvttl,         boolean()} |
+        {user_timeout,    non_neg_integer()} |
 	{ipv6_v6only,     boolean()}.
 
 -doc """
@@ -337,6 +341,9 @@ this value is returned from `inet:getopts/2` when called with the option name
         high_msgq_watermark |
         high_watermark |
         keepalive |
+        keepcnt |
+        keepidle |
+        keepintvl |
         linger |
         low_msgq_watermark |
         low_watermark |
@@ -365,6 +372,7 @@ this value is returned from `inet:getopts/2` when called with the option name
         recvtclass |
         recvttl |
         pktoptions |
+        user_timeout |
 	ipv6_v6only.
 -type connect_option() ::
         {fd, Fd :: non_neg_integer()} |
@@ -514,6 +522,12 @@ on the host with IP address `Address`, that may also be a hostname.
 - **`{tcp_module, module()}`** - Overrides which callback module is used.
   Defaults to `inet_tcp` for IPv4 and `inet6_tcp` for IPv6.
 
+- **`{protocol, tcp|mptcp}`** - With `mptcp` creates the socket
+  with protocol IPPROTO_MPTCP, if that is defined on the system.
+  Other than that the socket is regarded as a `tcp` socket.
+  If IPPROTO_MPTCP is not defined, `{error, eprotonosupport}`
+  is returned. `tcp` is the default value.
+
 - **`t:option/0`** - See `inet:setopts/2`.
 
 ### Socket Data
@@ -660,6 +674,12 @@ The following options are available:
 
 - **`{tcp_module, module()}`** - Overrides which callback module is used.
   Defaults to `inet_tcp` for IPv4 and `inet6_tcp` for IPv6.
+
+- **`{protocol, tcp|mptcp}`** - With `mptcp` creates the socket
+  with protocol IPPROTO_MPTCP, if that is defined on the system.
+  Other than that the socket is regarded as a `tcp` socket.
+  If IPPROTO_MPTCP is not defined, `{error, eprotonosupport}`
+  is returned. `tcp` is the default value.
 
 - **`t:option/0`** - See `inet:setopts/2`.
 
